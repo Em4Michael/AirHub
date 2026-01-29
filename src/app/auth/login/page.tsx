@@ -4,12 +4,13 @@ import React, { useState, Suspense } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
-import { Mail, Lock, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { Mail, Lock, AlertCircle, CheckCircle } from 'lucide-react';
+import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
 
 function LoginForm() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<{email?: string; password?: string}>({});
@@ -48,7 +49,6 @@ function LoginForm() {
     setError('');
     setFieldErrors({});
 
-    // Validate form first - don't proceed if validation fails
     if (!validateForm()) {
       return;
     }
@@ -57,13 +57,10 @@ function LoginForm() {
 
     try {
       await login(email, password);
-      // Login successful - the login function handles redirect
     } catch (err: unknown) {
-      // Handle error without redirecting
       const errorMessage = err instanceof Error ? err.message : 'Login failed';
       setError(errorMessage);
       
-      // Show specific field errors based on error message
       if (errorMessage.toLowerCase().includes('email') || errorMessage.toLowerCase().includes('not found')) {
         setFieldErrors({ email: 'Email not found' });
       } else if (errorMessage.toLowerCase().includes('password') || errorMessage.toLowerCase().includes('incorrect')) {
@@ -149,80 +146,34 @@ function LoginForm() {
 
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Email Field */}
-        <div>
-          <label className="block text-sm font-semibold mb-2 text-gray-700">
-            Email Address
-          </label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <Mail className="w-5 h-5 text-gray-400" />
-            </div>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => {
-                setEmail(e.target.value);
-                clearEmailError();
-              }}
-              className={`w-full pl-12 pr-4 py-3 rounded-xl bg-gray-50 border text-gray-900 placeholder-gray-400 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-                fieldErrors.email 
-                  ? 'border-red-500 focus:border-red-500' 
-                  : 'border-gray-200 focus:border-blue-500'
-              }`}
-              placeholder="you@example.com"
-              disabled={loading}
-              autoComplete="email"
-            />
-          </div>
-          {fieldErrors.email && (
-            <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
-              <AlertCircle className="w-4 h-4" />
-              {fieldErrors.email}
-            </p>
-          )}
-        </div>
+        <Input
+          type="email"
+          label="Email Address"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onClearError={clearEmailError}
+          error={fieldErrors.email}
+          placeholder="you@example.com"
+          disabled={loading}
+          autoComplete="email"
+          leftIcon={<Mail className="w-5 h-5" />}
+          required
+        />
 
         {/* Password Field */}
-        <div>
-          <label className="block text-sm font-semibold mb-2 text-gray-700">
-            Password
-          </label>
-          <div className="relative">
-            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-              <Lock className="w-5 h-5 text-gray-400" />
-            </div>
-            <input
-              type={showPassword ? 'text' : 'password'}
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                clearPasswordError();
-              }}
-              className={`w-full pl-12 pr-12 py-3 rounded-xl bg-gray-50 border text-gray-900 placeholder-gray-400 transition-all focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-                fieldErrors.password 
-                  ? 'border-red-500 focus:border-red-500' 
-                  : 'border-gray-200 focus:border-blue-500'
-              }`}
-              placeholder="••••••••"
-              disabled={loading}
-              autoComplete="current-password"
-            />
-            <button
-              type="button"
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute inset-y-0 right-0 pr-4 flex items-center text-gray-400 hover:text-gray-600"
-              tabIndex={-1}
-            >
-              {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-            </button>
-          </div>
-          {fieldErrors.password && (
-            <p className="mt-2 text-sm text-red-600 flex items-center gap-1">
-              <AlertCircle className="w-4 h-4" />
-              {fieldErrors.password}
-            </p>
-          )}
-        </div>
+        <Input
+          type="password"
+          label="Password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onClearError={clearPasswordError}
+          error={fieldErrors.password}
+          placeholder="••••••••"
+          disabled={loading}
+          autoComplete="current-password"
+          leftIcon={<Lock className="w-5 h-5" />}
+          required
+        />
 
         {/* Remember Me & Forgot Password */}
         <div className="flex items-center justify-between">
@@ -245,20 +196,15 @@ function LoginForm() {
         </div>
 
         {/* Submit Button */}
-        <button
+        <Button
           type="submit"
           disabled={loading}
-          className="w-full py-3 px-4 rounded-xl font-bold text-base text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-lg hover:shadow-xl flex items-center justify-center gap-2"
+          isLoading={loading}
+          loadingText="Signing in..."
+          fullWidth
         >
-          {loading ? (
-            <>
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Signing in...
-            </>
-          ) : (
-            'Sign In'
-          )}
-        </button>
+          Sign In
+        </Button>
       </form>
 
       {/* Sign Up Link */}

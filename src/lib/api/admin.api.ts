@@ -1,5 +1,5 @@
 import { apiClient } from './client';
-import { ApiResponse, PaginatedResponse, User, Profile, Entry } from '@/types';
+import { ApiResponse, PaginatedResponse, User, Profile, Entry, WeeklyPayment } from '@/types';
 
 export const adminApi = {
   // User management
@@ -13,8 +13,15 @@ export const adminApi = {
     return response.data;
   },
 
+  rejectUser: async (userId: string): Promise<ApiResponse> => {
+    const response = await apiClient.put(`/admin/reject/${userId}`);
+    return response.data;
+  },
+
   getAllUsers: async (page: number = 1, limit: number = 20): Promise<PaginatedResponse<User>> => {
-    const response = await apiClient.get(`/admin/users?page=${page}&limit=${limit}`);
+    const response = await apiClient.get('/admin/users', {
+      params: { page, limit }
+    });
     return response.data;
   },
 
@@ -23,9 +30,81 @@ export const adminApi = {
     return response.data;
   },
 
+  getUserStats: async (userId: string): Promise<ApiResponse<{
+    lifetime: {
+      totalHours: number;
+      avgQuality: number;
+      entryCount: number;
+      totalEarnings: number;
+    };
+    weekly: {
+      totalHours: number;
+      avgQuality: number;
+      entryCount: number;
+      totalEarnings: number;
+    };
+    user: {
+      id: string;
+      name: string;
+      email: string;
+      role: string;
+      status: string;
+      isApproved: boolean;
+    };
+  }>> => {
+    const response = await apiClient.get(`/admin/users/${userId}/stats`);
+    return response.data;
+  },
+
+  // Weekly Payment Management
+ // Weekly Payment Management
+  getUserWeeklyPayments: async (userId: string): Promise<ApiResponse<WeeklyPayment[]>> => {
+  const response = await apiClient.get(`/payments/users/${userId}/weekly-payments`);
+  return response.data;
+},
+
+getWeeklyPayments: async (
+  userId?: string,
+  page: number = 1,
+  limit: number = 20,
+  status?: string
+): Promise<PaginatedResponse<WeeklyPayment[]>> => {
+  const params: any = { page, limit };
+  if (userId) params.userId = userId;
+  if (status) params.status = status;
+  const response = await apiClient.get('/payments/weekly-payments', { params });
+  return response.data;
+},
+
+markWeekAsPaid: async (data: {
+  userId: string;
+  weekStart: string;
+  weekEnd: string;
+  extraBonus?: number;
+  extraBonusReason?: string;
+  notes?: string;
+}): Promise<ApiResponse<WeeklyPayment>> => {
+  const response = await apiClient.post('/payments/mark-week-paid', data);
+  return response.data;
+},
+
+updateWeeklyPayment: async (
+  paymentId: string,
+  data: {
+    status?: string;
+    extraBonus?: number;
+    extraBonusReason?: string;
+    notes?: string;
+  }
+): Promise<ApiResponse<WeeklyPayment>> => {
+  const response = await apiClient.put(`/payments/weekly-payments/${paymentId}`, data);
+  return response.data;
+},
+
   // Profile management
   createProfile: async (data: {
     email: string;
+    password?: string;
     fullName: string;
     state: string;
     country: string;
@@ -37,12 +116,22 @@ export const adminApi = {
   },
 
   getAllProfiles: async (page: number = 1, limit: number = 20): Promise<PaginatedResponse<Profile>> => {
-    const response = await apiClient.get(`/admin/profiles?page=${page}&limit=${limit}`);
+    const response = await apiClient.get('/admin/profiles', {
+      params: { page, limit }
+    });
     return response.data;
   },
 
-  getProfileById: async (profileId: string): Promise<ApiResponse<Profile>> => {
+  getProfileById: async (profileId: string): Promise<ApiResponse<{
+    profile: Profile;
+    entries: Entry[];
+  }>> => {
     const response = await apiClient.get(`/admin/profile/${profileId}`);
+    return response.data;
+  },
+
+  updateProfile: async (profileId: string, data: Partial<Profile>): Promise<ApiResponse<Profile>> => {
+    const response = await apiClient.put(`/admin/profile/${profileId}`, data);
     return response.data;
   },
 
@@ -55,9 +144,12 @@ export const adminApi = {
     try {
       const response = await apiClient.get('/admin/ranked-profiles');
       return response.data;
-    } catch {
-      // Fallback: calculate rankings from users
-      return { success: true, data: [] };
+    } catch (error) {
+      return {
+        success: true,
+        data: [],
+        message: 'No ranking data available'
+      };
     }
   },
 
@@ -67,11 +159,11 @@ export const adminApi = {
     limit: number = 50, 
     approved?: boolean
   ): Promise<PaginatedResponse<Entry>> => {
-    let url = `/admin/entries?page=${page}&limit=${limit}`;
+    const params: any = { page, limit };
     if (approved !== undefined) {
-      url += `&approved=${approved}`;
+      params.approved = approved;
     }
-    const response = await apiClient.get(url);
+    const response = await apiClient.get('/admin/entries', { params });
     return response.data;
   },
 
@@ -85,8 +177,8 @@ export const adminApi = {
     return response.data;
   },
 
-  // Stats - with fallback calculation
-  getWorkerStats: async (): Promise<ApiResponse<{
+  // Worker Stats
+    getWorkerStats: async (): Promise<ApiResponse<{
     totalUsers: number;
     totalProfiles: number;
     pendingEntries: number;
@@ -94,104 +186,39 @@ export const adminApi = {
     activeWorkers: number;
     totalHoursThisWeek: number;
     avgQualityThisWeek: number;
+    weeklyEarnings: number;
+    lifetimeEarnings: number;
   }>> => {
     try {
-      // Try the dedicated stats endpoint first
       const response = await apiClient.get('/admin/worker-stats');
       return response.data;
-    } catch {
-      // Fallback: calculate stats from individual endpoints
-      try {
-        const [usersRes, profilesRes, entriesRes, pendingRes] = await Promise.allSettled([
-          apiClient.get('/admin/users?page=1&limit=1'),
-          apiClient.get('/admin/profiles?page=1&limit=1'),
-          apiClient.get('/admin/entries?page=1&limit=1&approved=false'),
-          apiClient.get('/admin/pending-users'),
-        ]);
-
-        const totalUsers = usersRes.status === 'fulfilled' ? usersRes.value.data?.pagination?.total || 0 : 0;
-        const totalProfiles = profilesRes.status === 'fulfilled' ? profilesRes.value.data?.pagination?.total || 0 : 0;
-        const pendingEntries = entriesRes.status === 'fulfilled' ? entriesRes.value.data?.pagination?.total || 0 : 0;
-        const pendingUsers = pendingRes.status === 'fulfilled' ? (pendingRes.value.data?.data?.length || 0) : 0;
-
-        return {
-          success: true,
-          data: {
-            totalUsers,
-            totalProfiles,
-            pendingEntries,
-            pendingUsers,
-            activeWorkers: 0,
-            totalHoursThisWeek: 0,
-            avgQualityThisWeek: 0,
-          }
-        };
-      } catch {
-        return {
-          success: true,
-          data: {
-            totalUsers: 0,
-            totalProfiles: 0,
-            pendingEntries: 0,
-            pendingUsers: 0,
-            activeWorkers: 0,
-            totalHoursThisWeek: 0,
-            avgQualityThisWeek: 0,
-          }
-        };
-      }
+    } catch (error) {
+      return {
+        success: true,
+        data: {
+          totalUsers: 0,
+          totalProfiles: 0,
+          pendingEntries: 0,
+          pendingUsers: 0,
+          activeWorkers: 0,
+          totalHoursThisWeek: 0,
+          avgQualityThisWeek: 0,
+          weeklyEarnings: 0,
+          lifetimeEarnings: 0,
+        },
+        message: 'Unable to fetch stats'
+      };
     }
-  },
-
-  // Get dashboard stats by aggregating data
-  getDashboardStats: async () => {
-    const results = await Promise.allSettled([
-      apiClient.get('/admin/users'),
-      apiClient.get('/admin/profiles'),
-      apiClient.get('/admin/entries?approved=false'),
-      apiClient.get('/admin/pending-users'),
-    ]);
-
-    let totalUsers = 0;
-    let totalProfiles = 0;
-    let pendingEntries = 0;
-    let pendingUsers = 0;
-
-    if (results[0].status === 'fulfilled') {
-      const data = results[0].value.data;
-      totalUsers = data?.pagination?.total || data?.data?.length || 0;
-    }
-
-    if (results[1].status === 'fulfilled') {
-      const data = results[1].value.data;
-      totalProfiles = data?.pagination?.total || data?.data?.length || 0;
-    }
-
-    if (results[2].status === 'fulfilled') {
-      const data = results[2].value.data;
-      pendingEntries = data?.pagination?.total || data?.data?.length || 0;
-    }
-
-    if (results[3].status === 'fulfilled') {
-      const data = results[3].value.data;
-      pendingUsers = Array.isArray(data?.data) ? data.data.length : 0;
-    }
-
-    return {
-      totalUsers,
-      totalProfiles,
-      pendingEntries,
-      pendingUsers,
-    };
   },
 
   // Worker reassignment
   reassignWorker: async (data: {
     profileId: string;
     newWorkerId: string;
-    startDate: string;
-    endDate: string;
+    startDate?: string;
+    endDate?: string;
     reason?: string;
+    permanent?: boolean;
   }): Promise<ApiResponse> => {
     const response = await apiClient.put('/admin/reassign', data);
     return response.data;

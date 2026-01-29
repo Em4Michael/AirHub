@@ -58,12 +58,22 @@ export const Navbar: React.FC = () => {
                   }}
                 >
                   <div 
-                    className="w-9 h-9 rounded-lg flex items-center justify-center"
+                    className="w-9 h-9 rounded-lg flex items-center justify-center overflow-hidden"
                     style={{
-                      background: `linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 80%, #000) 100%)`,
+                      background: user.profilePhoto 
+                        ? 'transparent' 
+                        : `linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 80%, #000) 100%)`,
                     }}
                   >
-                    <User className="w-5 h-5 text-white" />
+                    {user.profilePhoto ? (
+                      <img 
+                        src={user.profilePhoto} 
+                        alt={user.name}
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <User className="w-5 h-5 text-white" />
+                    )}
                   </div>
                   <div className="text-left">
                     <p 
@@ -121,12 +131,22 @@ export const Navbar: React.FC = () => {
               style={{ backgroundColor: 'var(--bg-secondary)' }}
             >
               <div 
-                className="w-10 h-10 rounded-lg flex items-center justify-center"
+                className="w-10 h-10 rounded-lg flex items-center justify-center overflow-hidden"
                 style={{
-                  background: `linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 80%, #000) 100%)`,
+                  background: user.profilePhoto 
+                    ? 'transparent' 
+                    : `linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 80%, #000) 100%)`,
                 }}
               >
-                <User className="w-5 h-5 text-white" />
+                {user.profilePhoto ? (
+                  <img 
+                    src={user.profilePhoto} 
+                    alt={user.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <User className="w-5 h-5 text-white" />
+                )}
               </div>
               <div>
                 <p 

@@ -9,6 +9,9 @@ interface InputProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>, '
   leftIcon?: React.ReactNode;
   rightIcon?: React.ReactNode;
   inputSize?: 'sm' | 'md' | 'lg';
+  // New auth-specific props
+  showPasswordToggle?: boolean; // Explicit control for password toggle
+  onClearError?: () => void; // Callback when user starts typing
 }
 
 export const Input = forwardRef<HTMLInputElement, InputProps>(
@@ -21,6 +24,10 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
     className = '', 
     type,
     inputSize = 'md',
+    showPasswordToggle = true, // Default to true for password fields
+    onClearError,
+    onChange,
+    required,
     ...props 
   }, ref) => {
     const [showPassword, setShowPassword] = useState(false);
@@ -32,22 +39,31 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
       lg: 'py-4 text-lg',
     };
 
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+      // Call onClearError if provided (for auth pages)
+      if (onClearError) {
+        onClearError();
+      }
+      // Call original onChange
+      if (onChange) {
+        onChange(e);
+      }
+    };
+
     return (
       <div className="w-full">
         {label && (
           <label 
-            className="block text-sm font-semibold mb-2 transition-colors"
-            style={{ color: 'var(--text-primary)' }}
+            className="block text-sm font-semibold mb-2 transition-colors text-gray-700 dark:text-gray-300"
           >
             {label}
-            {props.required && <span className="text-red-500 ml-1">*</span>}
+            {required && <span className="text-red-500 ml-1">*</span>}
           </label>
         )}
         <div className="relative">
           {leftIcon && (
             <div 
-              className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none transition-colors"
-              style={{ color: 'var(--text-muted)' }}
+              className="absolute left-0 pl-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors z-10 text-gray-400"
             >
               {leftIcon}
             </div>
@@ -57,28 +73,28 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
             type={isPassword && showPassword ? 'text' : type}
             className={`
               w-full rounded-xl border transition-all duration-200
-              focus:outline-none focus:ring-2 focus:ring-opacity-20
+              focus:outline-none focus:ring-2
               disabled:opacity-50 disabled:cursor-not-allowed
+              placeholder:text-gray-400 text-gray-900 dark:text-white
               ${sizeClasses[inputSize]}
-              ${leftIcon ? 'pl-11' : 'pl-4'} 
-              ${(rightIcon || isPassword) ? 'pr-11' : 'pr-4'} 
-              ${error ? 'border-red-500 focus:border-red-500' : ''}
+              ${leftIcon ? 'pl-12' : 'pl-4'} 
+              ${(rightIcon || (isPassword && showPasswordToggle)) ? 'pr-12' : 'pr-4'} 
+              ${error 
+                ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20 bg-gray-50 dark:bg-gray-800' 
+                : 'border-gray-200 dark:border-gray-700 focus:border-blue-500 dark:focus:border-blue-400 focus:ring-blue-500/20 bg-gray-50 dark:bg-gray-800'
+              }
               ${className}
             `}
-            style={{
-              backgroundColor: 'var(--bg-secondary)',
-              borderColor: error ? '#ef4444' : 'var(--border-color)',
-              color: 'var(--text-primary)',
-              ...(error ? {} : { '--tw-ring-color': 'var(--accent-color)' } as React.CSSProperties)
-            }}
+            onChange={handleChange}
+            required={required}
             {...props}
           />
-          {isPassword && (
+          {isPassword && showPasswordToggle && (
             <button
               type="button"
               onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 transition-colors hover:opacity-70"
-              style={{ color: 'var(--text-muted)' }}
+              className="absolute right-0 pr-4 top-1/2 -translate-y-1/2 transition-colors text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 z-10"
+              tabIndex={-1}
             >
               {showPassword ? (
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -92,10 +108,9 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
               )}
             </button>
           )}
-          {rightIcon && !isPassword && (
+          {rightIcon && !(isPassword && showPasswordToggle) && (
             <div 
-              className="absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none transition-colors"
-              style={{ color: 'var(--text-muted)' }}
+              className="absolute right-0 pr-4 top-1/2 -translate-y-1/2 pointer-events-none transition-colors z-10 text-gray-400"
             >
               {rightIcon}
             </div>
@@ -110,10 +125,7 @@ export const Input = forwardRef<HTMLInputElement, InputProps>(
           </p>
         )}
         {helperText && !error && (
-          <p 
-            className="mt-2 text-sm transition-colors"
-            style={{ color: 'var(--text-muted)' }}
-          >
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400 transition-colors">
             {helperText}
           </p>
         )}

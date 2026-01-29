@@ -5,23 +5,27 @@ interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   variant?: 'primary' | 'secondary' | 'danger' | 'success' | 'outline' | 'ghost';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
+  loadingText?: string; // Custom loading text
   children: React.ReactNode;
+  fullWidth?: boolean; // For auth pages
 }
 
 export const Button: React.FC<ButtonProps> = ({
   variant = 'primary',
   size = 'md',
   isLoading = false,
+  loadingText,
   children,
   className,
   disabled,
   style,
+  fullWidth = false,
   ...props
 }) => {
-  const baseStyles = 'font-semibold rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2';
+  const baseStyles = 'font-bold rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center justify-center gap-2';
   
   const variants = {
-    primary: 'text-white shadow-lg hover:shadow-xl',
+    primary: 'text-white bg-gradient-to-r from-blue-600 to-blue-700 hover:from-blue-700 hover:to-blue-800 shadow-lg hover:shadow-xl',
     secondary: 'shadow-sm hover:shadow-md',
     danger: 'bg-red-600 hover:bg-red-700 text-white shadow-sm hover:shadow-md',
     success: 'bg-green-600 hover:bg-green-700 text-white shadow-sm hover:shadow-md',
@@ -38,22 +42,20 @@ export const Button: React.FC<ButtonProps> = ({
   const getVariantStyles = () => {
     switch (variant) {
       case 'primary':
-        return {
-          background: 'var(--accent-color)',
-        };
+        return {}; // Uses gradient from variants
       case 'secondary':
         return {
-          backgroundColor: 'var(--bg-tertiary)',
-          color: 'var(--text-primary)',
+          backgroundColor: 'var(--bg-tertiary, #f3f4f6)',
+          color: 'var(--text-primary, #111827)',
         };
       case 'outline':
         return {
-          borderColor: 'var(--accent-color)',
-          color: 'var(--accent-color)',
+          borderColor: 'var(--accent-color, #3b82f6)',
+          color: 'var(--accent-color, #3b82f6)',
         };
       case 'ghost':
         return {
-          color: 'var(--text-secondary)',
+          color: 'var(--text-secondary, #6b7280)',
         };
       default:
         return {};
@@ -62,18 +64,21 @@ export const Button: React.FC<ButtonProps> = ({
 
   return (
     <button
-      className={cn(baseStyles, variants[variant], sizes[size], className)}
+      className={cn(
+        baseStyles, 
+        variants[variant], 
+        sizes[size], 
+        fullWidth && 'w-full',
+        className
+      )}
       disabled={disabled || isLoading}
       style={{ ...getVariantStyles(), ...style }}
       {...props}
     >
       {isLoading ? (
         <>
-          <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-          </svg>
-          Loading...
+          <div className="w-5 h-5 border-2 border-current border-t-transparent rounded-full animate-spin" />
+          {loadingText || 'Loading...'}
         </>
       ) : (
         children

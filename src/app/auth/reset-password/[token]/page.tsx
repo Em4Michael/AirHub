@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Alert } from '@/components/ui/Alert';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://air-hub-server.vercel.app';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://localhost:3000';
 
 export default function ResetPasswordPage() {
   const params = useParams();
@@ -141,7 +141,7 @@ export default function ResetPasswordPage() {
         <Alert type="error" message={error} className="mb-6 text-left" />
 
         <Link href="/auth/forgot-password">
-          <Button className="w-full" size="lg">
+          <Button fullWidth size="lg">
             Request New Reset Link
           </Button>
         </Link>
@@ -176,7 +176,7 @@ export default function ResetPasswordPage() {
         </p>
 
         <Link href="/auth/login?reset=true">
-          <Button className="w-full" size="lg">
+          <Button fullWidth size="lg">
             Go to Login
           </Button>
         </Link>
@@ -235,7 +235,7 @@ export default function ResetPasswordPage() {
           }
         />
 
-        <Button type="submit" className="w-full" size="lg" isLoading={loading}>
+        <Button type="submit" fullWidth size="lg" isLoading={loading}>
           Reset Password
         </Button>
       </form>

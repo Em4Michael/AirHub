@@ -68,7 +68,7 @@ export default function MyEntriesPage() {
             View and manage your work entries
           </p>
         </div>
-        <Link href="/user/entries/new">
+        <Link href="/dashboard/user/entries/new">
           <Button className="btn-primary w-full sm:w-auto">
             <Plus className="w-5 h-5 mr-2" />
             New Entry

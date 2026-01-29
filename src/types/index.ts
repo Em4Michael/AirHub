@@ -10,18 +10,101 @@ export enum UserStatus {
   REVOKED = 'revoked',
 }
 
+export enum PaymentStatus {
+  PENDING = 'pending',
+  PAID = 'paid',
+  PROCESSING = 'processing',
+}
+
+export interface WeeklyPayment {
+  _id: string;
+  user: string | User;
+  weekStart: string;
+  weekEnd: string;
+  weekNumber: number;
+  year: number;
+  totalHours: number;
+  avgQuality: number;
+  entryCount: number;
+  baseEarnings: number;
+  performanceMultiplier: number;
+  bonusEarnings: number;
+  extraBonus?: number;
+  extraBonusReason?: string;
+  totalEarnings: number;
+  status: 'pending' | 'approved' | 'paid';
+  paid: boolean;
+  paidDate?: string;
+  paidBy?: string | User;
+  notes?: string;
+  adminNotes?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PaymentSummary {
+  id: string;
+  weekStart: string;
+  weekEnd: string;
+  weekNumber: number;
+  year: number;
+  hours: number;
+  quality: number;
+  earnings: number;
+  paid: boolean;
+  paidDate?: string;
+  status: string;
+  extraBonus?: number;
+  extraBonusReason?: string;
+  notes?: string;
+}
+
+export interface UserStatsResponse {
+  user: {
+    id: string;
+    name: string;
+    email: string;
+    role: string;
+    status: string;
+    isApproved: boolean;
+    createdAt: string;
+    profilePhoto?: string | null;
+    bankDetails?: {
+      bankName?: string;
+      accountName?: string;
+      accountNumber?: string;
+      routingNumber?: string;
+    };
+  };
+  lifetime: {
+    totalHours: number;
+    avgQuality: number;
+    entryCount: number;
+    totalEarnings: number;
+  };
+  weekly: {
+    totalHours: number;
+    avgQuality: number;
+    entryCount: number;
+    totalEarnings: number;
+  };
+  payments: PaymentSummary[];
+}
+
 export interface User {
   _id: string;
   email: string;
   name: string;
   role: UserRole;
   status: UserStatus;
+  profilePhoto?: string | null;
   bankDetails?: BankDetails;
   extraBonus?: number;
   extraBonusReason?: string;
   createdAt: string;
   updatedAt: string;
   isApproved?: boolean;
+  weeklyPayments?: WeeklyPayment[];
 }
 
 export interface BankDetails {
@@ -116,7 +199,7 @@ export interface DashboardApiResponse {
 }
 
 export interface DashboardData {
-totalTime: number;
+  totalTime: number;
   totalEntries: number;
   averageQuality: number;
   weeklyPerformance: number;
@@ -128,18 +211,18 @@ totalTime: number;
   weeklyData?: WeeklyData;
 }
 
-export interface WeeklyData {          
+export interface WeeklyData {
   hours: number;
   quality: number;
   earnings: number;
-  performance: number;                 
+  performance: number;
 }
 
 export interface WeeklySummary {
   hours: number;
   quality: number;
   earnings: number;
-  performance: number; 
+  performance: number;
 }
 
 export interface ChartDataPoint {

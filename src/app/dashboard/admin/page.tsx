@@ -7,11 +7,11 @@ import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { Alert } from '@/components/ui/Alert';
 import { adminApi } from '@/lib/api/admin.api';
-import { formatTime, formatPercentage, formatDate } from '@/lib/utils/format';
+import { formatTime, formatPercentage, formatCurrency } from '@/lib/utils/format';
 import { 
-  Users, Briefcase, FileText, TrendingUp, Trophy, Clock, 
-  Award, UserCheck, CheckCircle, Plus, ArrowRight, Activity,
-  AlertTriangle, Star
+  Users, Briefcase, FileText, Clock, Award, UserCheck, 
+  Plus, ArrowRight, Activity, AlertTriangle, Star, Trophy,
+  DollarSign, TrendingUp, Wallet
 } from 'lucide-react';
 
 interface WorkerRanking {
@@ -21,8 +21,8 @@ interface WorkerRanking {
   totalTime: number;
   avgQuality: number;
   overallScore: number;
-  entriesCount: number;
-  trend?: 'up' | 'down' | 'stable';
+  entryCount: number;
+  weeklyEarnings: number;
 }
 
 interface DashboardStats {
@@ -33,20 +33,23 @@ interface DashboardStats {
   activeWorkers: number;
   totalHoursThisWeek: number;
   avgQualityThisWeek: number;
-}
-
-interface RecentActivity {
-  _id: string;
-  type: 'entry' | 'user' | 'profile';
-  description: string;
-  timestamp: string;
-  user?: string;
+  weeklyEarnings: number;
+  lifetimeEarnings: number;
 }
 
 export default function AdminDashboard() {
-  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [stats, setStats] = useState<DashboardStats>({
+    totalUsers: 0,
+    totalProfiles: 0,
+    pendingEntries: 0,
+    pendingUsers: 0,
+    activeWorkers: 0,
+    totalHoursThisWeek: 0,
+    avgQualityThisWeek: 0,
+    weeklyEarnings: 0,
+    lifetimeEarnings: 0,
+  });
   const [rankings, setRankings] = useState<WorkerRanking[]>([]);
-  const [recentActivity, setRecentActivity] = useState<RecentActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -56,25 +59,27 @@ export default function AdminDashboard() {
 
   const fetchDashboardData = async () => {
     try {
-      const [statsRes, rankingsRes] = await Promise.all([
+      setLoading(true);
+      
+      const [statsRes, rankingsRes] = await Promise.allSettled([
         adminApi.getWorkerStats(),
         adminApi.getRankedProfiles(),
       ]);
 
-      if (statsRes.success && statsRes.data) {
-        setStats(statsRes.data);
+      if (statsRes.status === 'fulfilled' && statsRes.value.success && statsRes.value.data) {
+        setStats(statsRes.value.data);
       }
 
-      if (rankingsRes.success && rankingsRes.data) {
-        setRankings(rankingsRes.data);
+      if (rankingsRes.status === 'fulfilled' && rankingsRes.value.success && rankingsRes.value.data) {
+        // Filter to only include paid earnings in rankings
+        const rankedData = (Array.isArray(rankingsRes.value.data) ? rankingsRes.value.data : [])
+          .map((worker: any) => ({
+            ...worker,
+            weeklyEarnings: worker.weeklyEarnings || 0, // already filtered on backend if correct
+          }));
+        setRankings(rankedData);
       }
 
-      // Mock recent activity - replace with actual API call
-      setRecentActivity([
-        { _id: '1', type: 'entry', description: 'John Worker submitted entry for Profile A', timestamp: new Date().toISOString(), user: 'John Worker' },
-        { _id: '2', type: 'user', description: 'New user registration: Jane Doe', timestamp: new Date(Date.now() - 3600000).toISOString() },
-        { _id: '3', type: 'profile', description: 'Profile "Client XYZ" was updated', timestamp: new Date(Date.now() - 7200000).toISOString() },
-      ]);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load dashboard data');
     } finally {
@@ -104,6 +109,9 @@ export default function AdminDashboard() {
     return 'text-red-600';
   };
 
+  // Calculate total paid earnings across all workers (only paid weeks)
+  const totalPaidEarnings = rankings.reduce((sum, r) => sum + (r.weeklyEarnings || 0), 0);
+
   return (
     <div className="space-y-6 pb-8">
       {/* Header */}
@@ -116,19 +124,11 @@ export default function AdminDashboard() {
             Monitor worker performance and manage operations
           </p>
         </div>
-        <div className="flex gap-3">
-          <Link href="/admin/profiles/new">
-            <button className="btn btn-primary">
-              <Plus className="w-5 h-5" />
-              Create Profile
-            </button>
-          </Link>
-        </div>
       </div>
 
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
 
-      {/* Stats Cards */}
+      {/* Main Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="hover:shadow-lg transition-shadow">
           <CardContent className="p-5">
@@ -136,10 +136,10 @@ export default function AdminDashboard() {
               <div>
                 <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Total Users</p>
                 <p className="text-3xl font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-                  {stats?.totalUsers || 0}
+                  {stats.totalUsers}
                 </p>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                  {stats?.activeWorkers || 0} active this week
+                  {stats.activeWorkers} active this week
                 </p>
               </div>
               <div className="w-14 h-14 rounded-xl bg-blue-100 flex items-center justify-center">
@@ -155,7 +155,7 @@ export default function AdminDashboard() {
               <div>
                 <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Total Profiles</p>
                 <p className="text-3xl font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-                  {stats?.totalProfiles || 0}
+                  {stats.totalProfiles}
                 </p>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
                   Client accounts managed
@@ -174,7 +174,7 @@ export default function AdminDashboard() {
               <div>
                 <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Pending Entries</p>
                 <p className="text-3xl font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-                  {stats?.pendingEntries || 0}
+                  {stats.pendingEntries}
                 </p>
                 <p className="text-xs mt-1 text-yellow-600 font-medium">
                   Awaiting review
@@ -193,7 +193,7 @@ export default function AdminDashboard() {
               <div>
                 <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>Pending Users</p>
                 <p className="text-3xl font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
-                  {stats?.pendingUsers || 0}
+                  {stats.pendingUsers}
                 </p>
                 <p className="text-xs mt-1 text-orange-600 font-medium">
                   Awaiting approval
@@ -207,59 +207,77 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
-      {/* Performance Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      {/* Earnings & Performance Overview - Only Paid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
           <CardContent className="p-5">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
-                <Clock className="w-5 h-5 text-purple-600" />
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+                <DollarSign className="w-5 h-5 text-emerald-600" />
               </div>
               <div>
-                <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
-                  Total Hours This Week
+                <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                  Paid Earnings (This Week)
                 </p>
-                <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
-                  {formatTime(stats?.totalHoursThisWeek || 0)}
+                <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                  {formatCurrency(stats.weeklyEarnings)}
                 </p>
               </div>
             </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-              <div 
-                className="h-full rounded-full bg-purple-500 transition-all"
-                style={{ width: `${Math.min((stats?.totalHoursThisWeek || 0) / 200 * 100, 100)}%` }}
-              />
-            </div>
-            <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-              Target: 200 hours/week
-            </p>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-5">
-            <div className="flex items-center gap-3 mb-4">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                <Wallet className="w-5 h-5 text-indigo-600" />
+              </div>
+              <div>
+                <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                  Paid Lifetime Earnings
+                </p>
+                <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                  {formatCurrency(stats.lifetimeEarnings)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                <Clock className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                  Paid Hours (This Week)
+                </p>
+                <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                  {formatTime(stats.totalHoursThisWeek)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-2">
               <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
                 <Award className="w-5 h-5 text-green-600" />
               </div>
               <div>
-                <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
-                  Average Quality Score
+                <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                  Avg Paid Quality
                 </p>
-                <p className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>
-                  {formatPercentage(stats?.avgQualityThisWeek || 0)}
+                <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                  {formatPercentage(stats.avgQualityThisWeek)}
                 </p>
               </div>
             </div>
-            <div className="h-2 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-              <div 
-                className="h-full rounded-full bg-green-500 transition-all"
-                style={{ width: `${stats?.avgQualityThisWeek || 0}%` }}
-              />
-            </div>
-            <p className="text-xs mt-2" style={{ color: 'var(--text-muted)' }}>
-              Target: 85% quality
-            </p>
           </CardContent>
         </Card>
       </div>
@@ -275,14 +293,14 @@ export default function AdminDashboard() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Link href="/admin/pending" className="block">
+            <Link href="/dashboard/admin/pending" className="block">
               <div className="p-4 rounded-xl bg-orange-50 hover:bg-orange-100 transition-colors border-2 border-orange-200 hover:border-orange-300">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <UserCheck className="w-5 h-5 text-orange-600" />
                     <div>
                       <p className="font-semibold text-orange-900">Approve Users</p>
-                      <p className="text-sm text-orange-700">{stats?.pendingUsers || 0} pending</p>
+                      <p className="text-sm text-orange-700">{stats.pendingUsers} pending</p>
                     </div>
                   </div>
                   <ArrowRight className="w-5 h-5 text-orange-500" />
@@ -290,14 +308,14 @@ export default function AdminDashboard() {
               </div>
             </Link>
 
-            <Link href="/admin/entries" className="block">
+            <Link href="/dashboard/admin/entries" className="block">
               <div className="p-4 rounded-xl bg-yellow-50 hover:bg-yellow-100 transition-colors border-2 border-yellow-200 hover:border-yellow-300">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
-                    <CheckCircle className="w-5 h-5 text-yellow-600" />
+                    <FileText className="w-5 h-5 text-yellow-600" />
                     <div>
                       <p className="font-semibold text-yellow-900">Vet Entries</p>
-                      <p className="text-sm text-yellow-700">{stats?.pendingEntries || 0} to review</p>
+                      <p className="text-sm text-yellow-700">{stats.pendingEntries} to review</p>
                     </div>
                   </div>
                   <ArrowRight className="w-5 h-5 text-yellow-500" />
@@ -305,7 +323,7 @@ export default function AdminDashboard() {
               </div>
             </Link>
 
-            <Link href="/admin/profiles/new" className="block">
+            <Link href="/dashboard/admin/profiles/new" className="block">
               <div className="p-4 rounded-xl bg-green-50 hover:bg-green-100 transition-colors border-2 border-green-200 hover:border-green-300">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
@@ -320,14 +338,14 @@ export default function AdminDashboard() {
               </div>
             </Link>
 
-            <Link href="/admin/users" className="block">
+            <Link href="/dashboard/admin/users" className="block">
               <div className="p-4 rounded-xl bg-blue-50 hover:bg-blue-100 transition-colors border-2 border-blue-200 hover:border-blue-300">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-3">
                     <Users className="w-5 h-5 text-blue-600" />
                     <div>
                       <p className="font-semibold text-blue-900">Manage Users</p>
-                      <p className="text-sm text-blue-700">{stats?.totalUsers || 0} users</p>
+                      <p className="text-sm text-blue-700">{stats.totalUsers} users</p>
                     </div>
                   </div>
                   <ArrowRight className="w-5 h-5 text-blue-500" />
@@ -337,15 +355,15 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Worker Leaderboard */}
+        {/* Worker Leaderboard - Only paid earnings */}
         <Card className="lg:col-span-2">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-yellow-500" />
-                Worker Leaderboard
+                Worker Leaderboard (Paid Earnings)
               </CardTitle>
-              <Link href="/admin/rankings" className="text-sm font-medium hover:underline" style={{ color: 'var(--accent-color)' }}>
+              <Link href="/dashboard/admin/rankings" className="text-sm font-medium hover:underline" style={{ color: 'var(--accent-color)' }}>
                 View All
               </Link>
             </div>
@@ -355,6 +373,7 @@ export default function AdminDashboard() {
               <div className="text-center py-8" style={{ color: 'var(--text-muted)' }}>
                 <Trophy className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p>No ranking data available yet</p>
+                <p className="text-sm mt-2">Workers will appear here once paid entries are processed</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -376,32 +395,38 @@ export default function AdminDashboard() {
                     {/* Worker Info */}
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
-                        {worker.name}
+                        {worker.name || 'Unknown Worker'}
                       </p>
                       <p className="text-sm truncate" style={{ color: 'var(--text-muted)' }}>
-                        {worker.email}
+                        {worker.email || 'N/A'}
                       </p>
                     </div>
 
-                    {/* Stats */}
-                    <div className="hidden sm:flex items-center gap-4 text-sm">
+                    {/* Stats - Only paid */}
+                    <div className="hidden lg:flex items-center gap-4 text-sm">
                       <div className="text-center">
                         <p className="font-bold" style={{ color: 'var(--text-primary)' }}>
                           {formatTime(worker.totalTime)}
                         </p>
-                        <p style={{ color: 'var(--text-muted)' }}>Hours</p>
+                        <p style={{ color: 'var(--text-muted)' }} className="text-xs">Hours</p>
                       </div>
                       <div className="text-center">
                         <p className="font-bold" style={{ color: 'var(--text-primary)' }}>
                           {formatPercentage(worker.avgQuality)}
                         </p>
-                        <p style={{ color: 'var(--text-muted)' }}>Quality</p>
+                        <p style={{ color: 'var(--text-muted)' }} className="text-xs">Quality</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="font-bold text-green-600">
+                          {formatCurrency(worker.weeklyEarnings)}
+                        </p>
+                        <p style={{ color: 'var(--text-muted)' }} className="text-xs">Paid Earnings</p>
                       </div>
                     </div>
 
                     {/* Overall Score */}
                     <div className="text-right">
-                      <p className={`text-xl font-bold ${getScoreColor(worker.overallScore)}`}>
+                      <p className={`text-xl font-bold ${getScoreColor(worker.overallScore || 0)}`}>
                         {worker.overallScore?.toFixed(1) || '0.0'}
                       </p>
                       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Score</p>
@@ -413,55 +438,6 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Recent Activity */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Activity className="w-5 h-5" style={{ color: 'var(--accent-color)' }} />
-            Recent Activity
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {recentActivity.length === 0 ? (
-            <div className="text-center py-8" style={{ color: 'var(--text-muted)' }}>
-              <Activity className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p>No recent activity</p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {recentActivity.map((activity) => (
-                <div
-                  key={activity._id}
-                  className="flex items-start gap-3 p-3 rounded-lg transition-colors hover:bg-opacity-50"
-                  style={{ backgroundColor: 'var(--bg-tertiary)' }}
-                >
-                  <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${
-                    activity.type === 'entry' ? 'bg-blue-100' :
-                    activity.type === 'user' ? 'bg-green-100' : 'bg-purple-100'
-                  }`}>
-                    {activity.type === 'entry' ? (
-                      <FileText className="w-4 h-4 text-blue-600" />
-                    ) : activity.type === 'user' ? (
-                      <Users className="w-4 h-4 text-green-600" />
-                    ) : (
-                      <Briefcase className="w-4 h-4 text-purple-600" />
-                    )}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm" style={{ color: 'var(--text-primary)' }}>
-                      {activity.description}
-                    </p>
-                    <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                      {formatDate(activity.timestamp)}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
     </div>
   );
 }

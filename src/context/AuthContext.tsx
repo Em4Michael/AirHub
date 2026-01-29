@@ -31,17 +31,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const checkAuth = async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('airhub-token');
       if (token) {
         const response = await authApi.getMe();
         if (response.success && response.data) {
           setUser(response.data);
         } else {
-          localStorage.removeItem('token');
+          localStorage.removeItem('airhub-token');
         }
       }
     } catch (error) {
-      localStorage.removeItem('token');
+      localStorage.removeItem('airhub-token');
     } finally {
       setLoading(false);
     }
@@ -51,7 +51,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const response = await authApi.login({ email, password });
       if (response.success && response.data) {
-        localStorage.setItem('token', response.data.token);
+        localStorage.setItem('airhub-token', response.data.token);
         setUser(response.data.user);
         
         // Redirect based on role
@@ -87,7 +87,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = () => {
-    localStorage.removeItem('token');
+    localStorage.removeItem('airhub-token');
     setUser(null);
     router.push('/auth/login');
   };

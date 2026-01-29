@@ -14,6 +14,7 @@ import {
   CheckCircle, Clock, Award, Calendar, User, FileText, 
   Filter, Search, ChevronLeft, ChevronRight, AlertTriangle
 } from 'lucide-react';
+import { Input } from '@/components/ui/Input';
 
 export default function AdminEntriesPage() {
   const [entries, setEntries] = useState<Entry[]>([]);
@@ -117,13 +118,13 @@ export default function AdminEntriesPage() {
           {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: 'var(--text-muted)' }} />
-            <input
-              type="text"
-              placeholder="Search entries..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="input pl-10 w-full sm:w-64"
-            />
+         <Input
+                     type="text"
+                     value={searchQuery}
+                     onChange={(e) => setSearchQuery(e.target.value)}
+                     placeholder="Search users..."
+                     leftIcon={<Search className="w-5 h-5" />}
+                   />
           </div>
 
           {/* Filter */}

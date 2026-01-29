@@ -27,73 +27,72 @@ export default function UserDashboard() {
         throw new Error(response.message || 'No dashboard data received');
       }
 
-      // The API returns DashboardData directly (not DashboardApiResponse)
-      const data = response.data;
+      const raw = response.data;
 
-      // If your backend returns DashboardApiResponse format, transform it:
-      if ('summary' in data && 'earnings' in data) {
-        // Backend returns the complex format
-        const apiData = data as any;
-        
-        const latestWeekly = apiData.weeklyData?.length
-          ? apiData.weeklyData[apiData.weeklyData.length - 1]
-          : null;
+      const safeGet = (obj: any, path: string[], defaultVal: any = 0) => {
+        let current = obj;
+        for (const key of path) {
+          current = current?.[key];
+          if (current === undefined) return defaultVal;
+        }
+        return current;
+      };
 
-        const weeklyOverall = latestWeekly
-          ? (latestWeekly.avgQuality * 0.7 + (latestWeekly.avgTime ?? 0) * 0.3)
-          : 0;
+      // Only use paid data for display
+      const dashboardData: DashboardData = {
+        totalTime: safeGet(raw, ['summary', 'totalTime'], 0),
+        totalEntries: safeGet(raw, ['summary', 'totalEntries'], 0),
+        averageQuality: safeGet(raw, ['summary', 'avgQuality'], 0),
+        weeklyPerformance: safeGet(raw, ['summary', 'overallPerformance'], 0),
 
-        setDashboard({
-          totalTime: apiData.summary?.totalTime ?? 0,
-          totalEntries: apiData.summary?.totalEntries ?? 0,
-          averageQuality: apiData.summary?.avgQuality ?? 0,
-          weeklyPerformance: apiData.summary?.overallPerformance ?? weeklyOverall,
-          
-          earnings: apiData.earnings?.finalEarnings ?? 0,
-          performanceLevel: apiData.earnings?.tier ?? 'average',
-          bonusMultiplier: apiData.earnings?.multiplier ?? 1.0,
-          
-          recentEntries: (apiData.dailyData ?? [])
-            .slice(-10)
-            .reverse()
-            .map((daily: any) => ({
-              _id: daily._id ?? `temp-${daily.date}`,
-              worker: daily.worker ?? 'unknown-worker',
-              profile: daily.profile ?? 'unknown-profile',
-              date: daily.date,
-              time: daily.effectiveTime ?? daily.time ?? 0,
-              quality: daily.effectiveQuality ?? daily.quality ?? 0,
-              adminApproved: daily.adminApproved ?? false,
-              notes: daily.notes ?? '',
-              createdAt: daily.date ?? new Date().toISOString(),
-              updatedAt: daily.date ?? new Date().toISOString(),
-            })) as Entry[],
-          
-          chartData: (apiData.dailyData ?? []).map((d: any) => ({
+        earnings: safeGet(raw, ['earnings', 'finalEarnings'], 0), // should be paid only
+        performanceLevel: safeGet(raw, ['earnings', 'tier'], 'average'),
+        bonusMultiplier: safeGet(raw, ['earnings', 'multiplier'], 1.0),
+
+        recentEntries: (safeGet(raw, ['dailyData'], []) as any[])
+          .filter((d: any) => d.adminApproved === true) // only approved
+          .slice(-10)
+          .reverse()
+          .map((d: any) => ({
+            _id: d._id || `temp-${d.date}`,
+            worker: d.worker || 'unknown',
+            profile: d.profile || 'unknown',
+            date: d.date,
+            time: d.effectiveTime ?? d.time ?? 0,
+            quality: d.effectiveQuality ?? d.quality ?? 0,
+            adminApproved: d.adminApproved ?? false,
+            notes: d.notes ?? '',
+            createdAt: d.date ?? new Date().toISOString(),
+            updatedAt: d.date ?? new Date().toISOString(),
+          })) as Entry[],
+
+        chartData: (safeGet(raw, ['dailyData'], []) as any[])
+          .filter((d: any) => d.adminApproved === true)
+          .map((d: any) => ({
             date: new Date(d.date).toISOString().split('T')[0],
             time: d.effectiveTime ?? d.time ?? 0,
             quality: d.effectiveQuality ?? d.quality ?? 0,
             overall: ((d.effectiveQuality ?? d.quality ?? 0) * 0.7 + (d.effectiveTime ?? d.time ?? 0) * 0.3),
           })),
-          
-          weeklyData: latestWeekly
-            ? {
-                hours: latestWeekly.totalTime ?? latestWeekly.avgTime ?? 0,
-                quality: latestWeekly.avgQuality ?? 0,
-                earnings: (latestWeekly.totalTime ?? 0) * 2000,
-                performance: weeklyOverall,
-              }
-            : { hours: 0, quality: 0, earnings: 0, performance: 0 },
-        });
-      } else {
-        // Backend already returns DashboardData format - use it directly
-        setDashboard(data as DashboardData);
-      }
-      
+
+        weeklyData: (() => {
+          const latest = safeGet(raw, ['weeklyData'], []).slice(-1)[0];
+          if (!latest) return { hours: 0, quality: 0, earnings: 0, performance: 0 };
+
+          const perf = (latest.avgQuality * 0.7 + (latest.avgTime ?? 0) * 0.3);
+          return {
+            hours: latest.totalTime ?? latest.avgTime ?? 0,
+            quality: latest.avgQuality ?? 0,
+            earnings: (latest.totalTime ?? 0) * 2000,
+            performance: perf,
+          };
+        })(),
+      };
+
+      setDashboard(dashboardData);
     } catch (err: any) {
+      console.error('Dashboard fetch error:', err);
       setError(err?.response?.data?.message || err.message || 'Failed to load dashboard');
-      
-      // Set empty dashboard on error
       setDashboard({
         totalTime: 0,
         totalEntries: 0,
@@ -140,24 +139,30 @@ export default function UserDashboard() {
     below: { variant: 'danger' as const, label: 'Below Target' },
   }[dashboard.performanceLevel] || { variant: 'warning' as const, label: 'Average' };
 
-  // ──── ONLY ONE FUNCTION ────
+  // ──── Only show approved & paid entries ────
   const getCurrentWeekEntries = () => {
-    if (!dashboard.recentEntries?.length) return [];
+    if (!dashboard?.recentEntries?.length) return [];
 
     const now = new Date();
+    const dayOfWeek = now.getDay();
+    const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
+
     const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - now.getDay());
+    startOfWeek.setDate(now.getDate() - daysToMonday);
     startOfWeek.setHours(0, 0, 0, 0);
 
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    endOfWeek.setHours(23, 59, 59, 999);
+
     return dashboard.recentEntries.filter((entry) => {
-      const entryDate = new Date(entry.date);
-      return entryDate >= startOfWeek && entryDate <= now;
+      const entryDate = new Date(entry.date.split('T')[0] + 'T00:00:00');
+      return entryDate >= startOfWeek && entryDate <= endOfWeek && entry.adminApproved;
     });
   };
 
   const weekEntries = getCurrentWeekEntries();
 
-  // Calculate weekly totals from daily entries
   const calculateWeeklyTotals = () => {
     if (weekEntries.length === 0) {
       return {
@@ -236,7 +241,7 @@ export default function UserDashboard() {
               color: 'var(--accent-color)' 
             }}
           >
-            This Week
+            This Week (Paid)
           </span>
         </div>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
@@ -271,27 +276,27 @@ export default function UserDashboard() {
         </p>
       </div>
 
-      {/* Weekly Stats Cards */}
+      {/* Weekly Stats Cards – Only Paid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={Clock}
-          label="Hours Worked"
+          label="Paid Hours Worked"
           weeklyValue={formatTime(weeklyTotals.totalHours)}
           lifetimeValue={formatTime(dashboard.totalTime)}
-          subtitle={`${weekEntries.length} days this week`}
+          subtitle={`${weekEntries.length} approved days this week`}
           iconColor="#3b82f6"
         />
         <StatCard
           icon={Award}
-          label="Quality Score"
+          label="Paid Quality Score"
           weeklyValue={formatPercentage(weeklyTotals.avgQuality)}
           lifetimeValue={formatPercentage(dashboard.averageQuality)}
-          subtitle="Average across all entries"
+          subtitle="Average across paid entries"
           iconColor="#10b981"
         />
         <StatCard
           icon={TrendingUp}
-          label="Overall Performance"
+          label="Paid Overall Performance"
           weeklyValue={
             <span className="flex items-center gap-2">
               {formatPercentage(weeklyTotals.overallPerformance)}
@@ -312,15 +317,15 @@ export default function UserDashboard() {
             </span>
           }
           lifetimeValue={`${dashboard.totalEntries} entries`}
-          subtitle="70% Quality + 30% Time"
+          subtitle="70% Quality + 30% Time (Paid)"
           iconColor="#8b5cf6"
         />
         <StatCard
           icon={DollarSign}
-          label="Earnings"
+          label="Paid Earnings"
           weeklyValue={formatCurrency(dashboard.weeklyData?.earnings || 0)}
           lifetimeValue={formatCurrency(dashboard.earnings)}
-          subtitle={`${dashboard.bonusMultiplier}x multiplier`}
+          subtitle={`${dashboard.bonusMultiplier}x multiplier (Paid)`}
           iconColor="#f59e0b"
         />
       </div>

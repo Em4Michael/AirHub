@@ -5,12 +5,11 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { Alert } from '@/components/ui/Alert';
 import { Spinner } from '@/components/ui/Spinner';
 import { adminApi } from '@/lib/api/admin.api';
 import { User } from '@/types';
-import { ArrowLeft, Building, Mail, Lock, MapPin, User as UserIcon, Users } from 'lucide-react';
+import { ArrowLeft, Building, Mail, MapPin, User as UserIcon, Users } from 'lucide-react';
 
 export default function CreateProfilePage() {
   const router = useRouter();
@@ -18,17 +17,15 @@ export default function CreateProfilePage() {
   const [error, setError] = useState('');
   const [workers, setWorkers] = useState<User[]>([]);
   const [loadingWorkers, setLoadingWorkers] = useState(true);
-  
+ 
   const [formData, setFormData] = useState({
     email: '',
-    password: '',
     fullName: '',
     state: '',
     country: '',
     accountBearerName: '',
     defaultWorker: '',
   });
-
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -37,16 +34,30 @@ export default function CreateProfilePage() {
 
   const fetchWorkers = async () => {
     try {
-      const response = await adminApi.getAllUsers(1, 100);
+      setLoadingWorkers(true);
+      const response = await adminApi.getAllUsers(1, 200);
+      
+      console.log('Full API response:', response);
+      
       if (response.success && response.data) {
-        // Filter only approved users
+        console.log('Total users:', response.data.length);
+        
+        // Filter only approved users with 'user' role (not admin or superadmin)
         const approvedWorkers = response.data.filter(
-          (user: User) => user.status === 'approved' && user.role === 'user'
+          (user: User) => {
+            console.log('User:', user.name, 'Role:', user.role, 'Status:', user.status, 'isApproved:', user.isApproved);
+            // Check both status and isApproved fields
+            return user.role === 'user' && (user.isApproved === true || user.status === 'approved');
+          }
         );
+        
+        console.log('Filtered workers:', approvedWorkers.length);
         setWorkers(approvedWorkers);
       }
-    } catch (err) {
-      console.error('Failed to load workers');
+    } catch (err: unknown) {
+      const error = err as any;
+      console.error('Failed to load workers:', error);
+      setError(error.response?.data?.message || 'Could not load workers for assignment');
     } finally {
       setLoadingWorkers(false);
     }
@@ -54,35 +65,29 @@ export default function CreateProfilePage() {
 
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
-
+    
     if (!formData.email.trim()) {
       errors.email = 'Email is required';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       errors.email = 'Invalid email format';
     }
-
-    if (!formData.password) {
-      errors.password = 'Password is required';
-    } else if (formData.password.length < 6) {
-      errors.password = 'Password must be at least 6 characters';
-    }
-
+    
     if (!formData.fullName.trim()) {
       errors.fullName = 'Full name is required';
     }
-
+    
     if (!formData.state.trim()) {
       errors.state = 'State is required';
     }
-
+    
     if (!formData.country.trim()) {
       errors.country = 'Country is required';
     }
-
+    
     if (!formData.accountBearerName.trim()) {
       errors.accountBearerName = 'Account bearer name is required';
     }
-
+    
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
@@ -90,32 +95,48 @@ export default function CreateProfilePage() {
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
-    
+   
     if (fieldErrors[name]) {
-      const newErrors = { ...fieldErrors };
-      delete newErrors[name];
-      setFieldErrors(newErrors);
+      setFieldErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[name];
+        return newErrors;
+      });
     }
     setError('');
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
-
-    if (!validateForm()) {
-      return;
-    }
+    if (!validateForm()) return;
 
     setLoading(true);
-
+    setError('');
+    
     try {
-      const response = await adminApi.createProfile(formData);
-      if (response.success) {
-        router.push('/admin/profiles');
+      const payload: any = {
+        email: formData.email,
+        fullName: formData.fullName,
+        state: formData.state,
+        country: formData.country,
+        accountBearerName: formData.accountBearerName,
+      };
+      
+      // Only include defaultWorker if a worker is selected
+      if (formData.defaultWorker && formData.defaultWorker !== '') {
+        payload.defaultWorker = formData.defaultWorker;
       }
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to create profile');
+
+      const response = await adminApi.createProfile(payload);
+     
+      if (response.success) {
+        alert('Profile created successfully!');
+        router.push('/dashboard/admin/profiles');
+      }
+    } catch (err: unknown) {
+      const error = err as any;
+      console.error('Create profile error:', error);
+      setError(error.response?.data?.message || error.message || 'Failed to create profile');
     } finally {
       setLoading(false);
     }
@@ -125,7 +146,7 @@ export default function CreateProfilePage() {
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
-        <Link href="/admin/profiles">
+        <Link href="/dashboard/admin/profiles">
           <button className="p-2 rounded-lg transition-colors hover:bg-opacity-80" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
             <ArrowLeft className="w-5 h-5" style={{ color: 'var(--text-primary)' }} />
           </button>
@@ -157,7 +178,7 @@ export default function CreateProfilePage() {
                 Full Name / Company Name
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Building className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
                 </div>
                 <input
@@ -165,7 +186,7 @@ export default function CreateProfilePage() {
                   name="fullName"
                   value={formData.fullName}
                   onChange={handleChange}
-                  className={`input pl-12 ${fieldErrors.fullName ? 'input-error' : ''}`}
+                  className={`input pl-10 ${fieldErrors.fullName ? 'input-error' : ''}`}
                   placeholder="Acme Corporation"
                 />
               </div>
@@ -180,7 +201,7 @@ export default function CreateProfilePage() {
                 Email Address
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Mail className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
                 </div>
                 <input
@@ -188,37 +209,13 @@ export default function CreateProfilePage() {
                   name="email"
                   value={formData.email}
                   onChange={handleChange}
-                  className={`input pl-12 ${fieldErrors.email ? 'input-error' : ''}`}
+                  className={`input pl-10 ${fieldErrors.email ? 'input-error' : ''}`}
                   placeholder="client@example.com"
                 />
               </div>
               {fieldErrors.email && (
                 <p className="error-text">{fieldErrors.email}</p>
               )}
-            </div>
-
-            {/* Password */}
-            <div>
-              <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
-                Password
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
-                  <Lock className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
-                </div>
-                <input
-                  type="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  className={`input pl-12 ${fieldErrors.password ? 'input-error' : ''}`}
-                  placeholder="••••••••"
-                />
-              </div>
-              {fieldErrors.password && (
-                <p className="error-text">{fieldErrors.password}</p>
-              )}
-              <p className="helper-text">Minimum 6 characters</p>
             </div>
 
             {/* Location */}
@@ -228,7 +225,7 @@ export default function CreateProfilePage() {
                   State
                 </label>
                 <div className="relative">
-                  <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                     <MapPin className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
                   </div>
                   <input
@@ -236,15 +233,14 @@ export default function CreateProfilePage() {
                     name="state"
                     value={formData.state}
                     onChange={handleChange}
-                    className={`input pl-12 ${fieldErrors.state ? 'input-error' : ''}`}
-                    placeholder="California"
+                    className={`input pl-10 ${fieldErrors.state ? 'input-error' : ''}`}
+                    placeholder="Rivers State"
                   />
                 </div>
                 {fieldErrors.state && (
                   <p className="error-text">{fieldErrors.state}</p>
                 )}
               </div>
-
               <div>
                 <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
                   Country
@@ -255,7 +251,7 @@ export default function CreateProfilePage() {
                   value={formData.country}
                   onChange={handleChange}
                   className={`input ${fieldErrors.country ? 'input-error' : ''}`}
-                  placeholder="United States"
+                  placeholder="Nigeria"
                 />
                 {fieldErrors.country && (
                   <p className="error-text">{fieldErrors.country}</p>
@@ -269,7 +265,7 @@ export default function CreateProfilePage() {
                 Account Bearer Name
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <UserIcon className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
                 </div>
                 <input
@@ -277,7 +273,7 @@ export default function CreateProfilePage() {
                   name="accountBearerName"
                   value={formData.accountBearerName}
                   onChange={handleChange}
-                  className={`input pl-12 ${fieldErrors.accountBearerName ? 'input-error' : ''}`}
+                  className={`input pl-10 ${fieldErrors.accountBearerName ? 'input-error' : ''}`}
                   placeholder="John Doe"
                 />
               </div>
@@ -286,17 +282,17 @@ export default function CreateProfilePage() {
               )}
             </div>
 
-            {/* Default Worker */}
+            {/* Assign Worker */}
             <div>
               <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
                 Assign to Worker (Optional)
               </label>
               <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Users className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
                 </div>
                 {loadingWorkers ? (
-                  <div className="input pl-12 flex items-center">
+                  <div className="input pl-10 flex items-center">
                     <Spinner size="sm" />
                     <span className="ml-2" style={{ color: 'var(--text-muted)' }}>Loading workers...</span>
                   </div>
@@ -305,9 +301,10 @@ export default function CreateProfilePage() {
                     name="defaultWorker"
                     value={formData.defaultWorker}
                     onChange={handleChange}
-                    className="input pl-12"
+                    className="input pl-10"
+                    style={{ paddingLeft: '2.5rem' }}
                   >
-                    <option value="">Select a worker</option>
+                    <option value="">No worker assigned</option>
                     {workers.map((worker) => (
                       <option key={worker._id} value={worker._id}>
                         {worker.name} ({worker.email})
@@ -316,15 +313,19 @@ export default function CreateProfilePage() {
                   </select>
                 )}
               </div>
-              <p className="helper-text">You can assign a worker later</p>
+              <p className="helper-text mt-1">
+                {workers.length === 0 && !loadingWorkers
+                  ? 'No workers available. Only approved users with "user" role can be assigned.'
+                  : 'You can assign or change the worker later if needed'}
+              </p>
             </div>
 
             {/* Submit Buttons */}
-            <div className="flex gap-3 pt-4">
+            <div className="flex gap-3 pt-6">
               <Button type="submit" isLoading={loading} className="flex-1">
                 Create Profile
               </Button>
-              <Link href="/admin/profiles" className="flex-1">
+              <Link href="/dashboard/admin/profiles" className="flex-1">
                 <Button type="button" variant="outline" className="w-full">
                   Cancel
                 </Button>

@@ -19,12 +19,12 @@ interface NavItem {
 }
 
 const navigation: NavItem[] = [
-  // User routes
+  // User routes only
   {
     name: 'Dashboard',
     href: '/dashboard/user',
     icon: LayoutDashboard,
-    roles: [UserRole.USER, UserRole.ADMIN, UserRole.SUPERADMIN],
+    roles: [UserRole.USER],
   },
   {
     name: 'Profiles',
