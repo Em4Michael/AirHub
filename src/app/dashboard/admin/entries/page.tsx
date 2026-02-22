@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/Card';
+import { Card, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
@@ -10,9 +10,9 @@ import { Modal } from '@/components/ui/Modal';
 import { adminApi } from '@/lib/api/admin.api';
 import { Entry } from '@/types';
 import { formatDate, formatTime, formatPercentage } from '@/lib/utils/format';
-import { 
-  CheckCircle, Clock, Award, Calendar, User, FileText, 
-  Filter, Search, ChevronLeft, ChevronRight, AlertTriangle
+import {
+  CheckCircle, Clock, Award, Calendar, FileText,
+  Search, ChevronLeft, ChevronRight, Trash2, AlertTriangle,
 } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 
@@ -20,21 +20,20 @@ export default function AdminEntriesPage() {
   const [entries, setEntries] = useState<Entry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
   const [selectedEntry, setSelectedEntry] = useState<Entry | null>(null);
-  const [vetData, setVetData] = useState({
-    adminTime: '',
-    adminQuality: '',
-    adminNotes: '',
-  });
+  const [vetData, setVetData] = useState({ adminTime: '', adminQuality: '', adminNotes: '' });
   const [vetting, setVetting] = useState(false);
   const [filter, setFilter] = useState<'pending' | 'approved' | 'all'>('pending');
   const [searchQuery, setSearchQuery] = useState('');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
 
-  useEffect(() => {
-    fetchEntries();
-  }, [page, filter]);
+  // ── Delete state ────────────────────────────────────────────────────────────
+  const [deleteConfirm, setDeleteConfirm] = useState<Entry | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  useEffect(() => { fetchEntries(); }, [page, filter]);
 
   const fetchEntries = async () => {
     try {
@@ -43,9 +42,7 @@ export default function AdminEntriesPage() {
       const response = await adminApi.getAllEntries(page, 20, approved);
       if (response.success && response.data) {
         setEntries(response.data);
-        if (response.pagination) {
-          setTotalPages(response.pagination.pages);
-        }
+        if (response.pagination) setTotalPages(response.pagination.pages);
       }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load entries');
@@ -56,17 +53,12 @@ export default function AdminEntriesPage() {
 
   const handleVetEntry = (entry: Entry) => {
     setSelectedEntry(entry);
-    setVetData({
-      adminTime: entry.time.toString(),
-      adminQuality: entry.quality.toString(),
-      adminNotes: '',
-    });
+    setVetData({ adminTime: entry.time.toString(), adminQuality: entry.quality.toString(), adminNotes: '' });
   };
 
   const handleSubmitVet = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedEntry) return;
-
     setVetting(true);
     try {
       await adminApi.vetEntry({
@@ -76,6 +68,7 @@ export default function AdminEntriesPage() {
         adminNotes: vetData.adminNotes,
       });
       setSelectedEntry(null);
+      setSuccess('Entry approved successfully');
       fetchEntries();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to vet entry');
@@ -84,21 +77,32 @@ export default function AdminEntriesPage() {
     }
   };
 
-  const filteredEntries = entries.filter(entry => {
+  const handleDeleteEntry = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    try {
+      await adminApi.deleteEntry(deleteConfirm._id);
+      setEntries((prev) => prev.filter((e) => e._id !== deleteConfirm._id));
+      setDeleteConfirm(null);
+      setSuccess('Entry deleted successfully');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to delete entry');
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const filteredEntries = entries.filter((entry) => {
     const workerName = typeof entry.worker === 'object' ? entry.worker.name : '';
     const profileName = typeof entry.profile === 'object' ? entry.profile.fullName : '';
-    return workerName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-           profileName.toLowerCase().includes(searchQuery.toLowerCase());
+    const q = searchQuery.toLowerCase();
+    return workerName.toLowerCase().includes(q) || profileName.toLowerCase().includes(q);
   });
 
-  const pendingCount = entries.filter(e => !e.adminApproved).length;
+  const pendingCount = entries.filter((e) => !e.adminApproved).length;
 
   if (loading && entries.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <div className="flex items-center justify-center h-96"><Spinner size="lg" /></div>;
   }
 
   return (
@@ -106,69 +110,31 @@ export default function AdminEntriesPage() {
       {/* Header */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
-          <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>
-            Entries
-          </h1>
-          <p style={{ color: 'var(--text-secondary)' }} className="mt-1">
-            Review and approve worker entries
-          </p>
+          <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>Entries</h1>
+          <p style={{ color: 'var(--text-secondary)' }} className="mt-1">Review and approve worker entries</p>
         </div>
-        
         <div className="flex flex-col sm:flex-row gap-3">
-          {/* Search */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5" style={{ color: 'var(--text-muted)' }} />
-         <Input
-                     type="text"
-                     value={searchQuery}
-                     onChange={(e) => setSearchQuery(e.target.value)}
-                     placeholder="Search users..."
-                     leftIcon={<Search className="w-5 h-5" />}
-                   />
-          </div>
-
-          {/* Filter */}
+          <Input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search by worker or profile…" leftIcon={<Search className="w-5 h-5" />} />
           <div className="flex rounded-xl overflow-hidden border" style={{ borderColor: 'var(--border-color)' }}>
-            <button
-              onClick={() => { setFilter('pending'); setPage(1); }}
-              className={`px-4 py-2 text-sm font-medium transition-colors ${
-                filter === 'pending' ? 'text-white' : ''
-              }`}
-              style={{ 
-                backgroundColor: filter === 'pending' ? 'var(--accent-color)' : 'var(--bg-secondary)',
-                color: filter === 'pending' ? 'white' : 'var(--text-secondary)'
-              }}
-            >
-              Pending ({pendingCount})
-            </button>
-            <button
-              onClick={() => { setFilter('approved'); setPage(1); }}
-              className={`px-4 py-2 text-sm font-medium transition-colors border-l border-r`}
-              style={{ 
-                backgroundColor: filter === 'approved' ? 'var(--accent-color)' : 'var(--bg-secondary)',
-                color: filter === 'approved' ? 'white' : 'var(--text-secondary)',
-                borderColor: 'var(--border-color)'
-              }}
-            >
-              Approved
-            </button>
-            <button
-              onClick={() => { setFilter('all'); setPage(1); }}
-              className={`px-4 py-2 text-sm font-medium transition-colors`}
-              style={{ 
-                backgroundColor: filter === 'all' ? 'var(--accent-color)' : 'var(--bg-secondary)',
-                color: filter === 'all' ? 'white' : 'var(--text-secondary)'
-              }}
-            >
-              All
-            </button>
+            {(['pending', 'approved', 'all'] as const).map((f) => (
+              <button key={f} onClick={() => { setFilter(f); setPage(1); }}
+                className="px-4 py-2 text-sm font-medium transition-colors"
+                style={{
+                  backgroundColor: filter === f ? 'var(--accent-color)' : 'var(--bg-secondary)',
+                  color: filter === f ? 'white' : 'var(--text-secondary)',
+                  borderRight: f !== 'all' ? '1px solid var(--border-color)' : undefined,
+                }}>
+                {f === 'pending' ? `Pending (${pendingCount})` : f.charAt(0).toUpperCase() + f.slice(1)}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
+      {success && <Alert type="success" message={success} onClose={() => setSuccess('')} />}
 
-      {/* Entries List */}
       {filteredEntries.length === 0 ? (
         <Card>
           <CardContent className="py-12 text-center">
@@ -190,9 +156,7 @@ export default function AdminEntriesPage() {
                       <Calendar className="w-6 h-6" style={{ color: 'var(--accent-color)' }} />
                     </div>
                     <div>
-                      <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>
-                        {formatDate(entry.date)}
-                      </p>
+                      <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{formatDate(entry.date)}</p>
                       <Badge variant={entry.adminApproved ? 'success' : 'warning'}>
                         {entry.adminApproved ? 'Approved' : 'Pending'}
                       </Badge>
@@ -202,17 +166,13 @@ export default function AdminEntriesPage() {
                   {/* Worker & Profile */}
                   <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <div>
-                      <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
-                        Worker
-                      </p>
+                      <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>Worker</p>
                       <p className="font-medium" style={{ color: 'var(--text-primary)' }}>
                         {typeof entry.worker === 'object' ? entry.worker.name : 'N/A'}
                       </p>
                     </div>
                     <div>
-                      <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>
-                        Profile
-                      </p>
+                      <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: 'var(--text-muted)' }}>Profile</p>
                       <p className="font-medium" style={{ color: 'var(--text-primary)' }}>
                         {typeof entry.profile === 'object' ? entry.profile.fullName : 'N/A'}
                       </p>
@@ -225,7 +185,7 @@ export default function AdminEntriesPage() {
                       <div className="flex items-center gap-1 justify-center mb-1">
                         <Clock className="w-4 h-4 text-blue-500" />
                         <span className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                          {formatTime(entry.adminTime || entry.time)}
+                          {formatTime(entry.adminTime ?? entry.time)}
                         </span>
                       </div>
                       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Hours</p>
@@ -234,39 +194,41 @@ export default function AdminEntriesPage() {
                       <div className="flex items-center gap-1 justify-center mb-1">
                         <Award className="w-4 h-4 text-green-500" />
                         <span className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>
-                          {formatPercentage(entry.adminQuality || entry.quality)}
+                          {formatPercentage(entry.adminQuality ?? entry.quality)}
                         </span>
                       </div>
                       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Quality</p>
                     </div>
                   </div>
 
-                  {/* Action */}
-                  <div className="lg:w-32">
-                    {!entry.adminApproved ? (
-                      <Button 
-                        onClick={() => handleVetEntry(entry)}
-                        className="w-full"
-                      >
-                        <CheckCircle className="w-4 h-4" />
-                        Vet
-                      </Button>
-                    ) : (
-                      <div className="text-center">
-                        <p className="text-xs" style={{ color: 'var(--text-muted)' }}>
-                          Approved by
-                        </p>
-                        <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-                          {typeof entry.adminApprovedBy === 'object' 
-                            ? entry.adminApprovedBy.name 
-                            : 'Admin'}
-                        </p>
-                      </div>
-                    )}
+                  {/* Actions — vet button + delete button */}
+                  <div className="flex items-center gap-2 lg:w-auto">
+                    <div className="lg:w-32">
+                      {!entry.adminApproved ? (
+                        <Button onClick={() => handleVetEntry(entry)} className="w-full" size="sm">
+                          <CheckCircle className="w-4 h-4" />
+                          Vet
+                        </Button>
+                      ) : (
+                        <div className="text-center">
+                          <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Approved by</p>
+                          <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+                            {typeof entry.approvedBy === 'object' ? (entry.approvedBy as any).name : 'Admin'}
+                          </p>
+                        </div>
+                      )}
+                    </div>
+                    {/* Delete — always visible regardless of approval status */}
+                    <button
+                      onClick={() => setDeleteConfirm(entry)}
+                      className="p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors flex-shrink-0"
+                      title="Delete entry"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
                 </div>
 
-                {/* Notes */}
                 {(entry.notes || entry.adminNotes) && (
                   <div className="mt-4 pt-4 border-t" style={{ borderColor: 'var(--border-color)' }}>
                     {entry.notes && (
@@ -287,48 +249,31 @@ export default function AdminEntriesPage() {
         </div>
       )}
 
-      {/* Pagination */}
       {totalPages > 1 && (
         <div className="flex items-center justify-center gap-2">
-          <button
-            onClick={() => setPage(p => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="p-2 rounded-lg transition-colors disabled:opacity-50"
-            style={{ backgroundColor: 'var(--bg-tertiary)' }}
-          >
+          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1}
+            className="p-2 rounded-lg transition-colors disabled:opacity-50" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
             <ChevronLeft className="w-5 h-5" />
           </button>
           <span className="px-4 py-2 text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
             Page {page} of {totalPages}
           </span>
-          <button
-            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            className="p-2 rounded-lg transition-colors disabled:opacity-50"
-            style={{ backgroundColor: 'var(--bg-tertiary)' }}
-          >
+          <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+            className="p-2 rounded-lg transition-colors disabled:opacity-50" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
             <ChevronRight className="w-5 h-5" />
           </button>
         </div>
       )}
 
-      {/* Vet Entry Modal */}
-      <Modal
-        isOpen={!!selectedEntry}
-        onClose={() => setSelectedEntry(null)}
-        title="Vet Entry"
-        size="md"
-      >
+      {/* ── Vet Modal ──────────────────────────────────────────────────────── */}
+      <Modal isOpen={!!selectedEntry} onClose={() => setSelectedEntry(null)} title="Vet Entry" size="md">
         {selectedEntry && (
           <form onSubmit={handleSubmitVet} className="space-y-5">
-            {/* Entry Summary */}
             <div className="p-4 rounded-xl" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
               <div className="grid grid-cols-2 gap-4 text-sm">
                 <div>
                   <p style={{ color: 'var(--text-muted)' }}>Date</p>
-                  <p className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                    {formatDate(selectedEntry.date)}
-                  </p>
+                  <p className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatDate(selectedEntry.date)}</p>
                 </div>
                 <div>
                   <p style={{ color: 'var(--text-muted)' }}>Worker</p>
@@ -338,84 +283,76 @@ export default function AdminEntriesPage() {
                 </div>
                 <div>
                   <p style={{ color: 'var(--text-muted)' }}>Submitted Time</p>
-                  <p className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                    {formatTime(selectedEntry.time)}
-                  </p>
+                  <p className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatTime(selectedEntry.time)}</p>
                 </div>
                 <div>
                   <p style={{ color: 'var(--text-muted)' }}>Submitted Quality</p>
-                  <p className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                    {formatPercentage(selectedEntry.quality)}
-                  </p>
+                  <p className="font-medium" style={{ color: 'var(--text-primary)' }}>{formatPercentage(selectedEntry.quality)}</p>
                 </div>
               </div>
               {selectedEntry.notes && (
                 <div className="mt-3 pt-3 border-t" style={{ borderColor: 'var(--border-color)' }}>
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Notes</p>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Worker Notes</p>
                   <p className="text-sm" style={{ color: 'var(--text-primary)' }}>{selectedEntry.notes}</p>
                 </div>
               )}
             </div>
-
-            {/* Admin Values */}
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
-                  Verified Time (hours)
-                </label>
-                <input
-                  type="number"
-                  value={vetData.adminTime}
+                <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Verified Time (hours)</label>
+                <input type="number" value={vetData.adminTime}
                   onChange={(e) => setVetData({ ...vetData, adminTime: e.target.value })}
-                  className="input"
-                  required
-                  step="0.01"
-                  min="0"
-                  max="24"
-                />
+                  className="input" required step="0.01" min="0" max="24" />
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
-                  Verified Quality (%)
-                </label>
-                <input
-                  type="number"
-                  value={vetData.adminQuality}
+                <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Verified Quality (%)</label>
+                <input type="number" value={vetData.adminQuality}
                   onChange={(e) => setVetData({ ...vetData, adminQuality: e.target.value })}
-                  className="input"
-                  required
-                  min="0"
-                  max="100"
-                />
+                  className="input" required min="0" max="100" />
               </div>
             </div>
-
-            {/* Admin Notes */}
             <div>
-              <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
-                Admin Notes (Optional)
-              </label>
-              <textarea
-                value={vetData.adminNotes}
+              <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>Admin Notes (Optional)</label>
+              <textarea value={vetData.adminNotes}
                 onChange={(e) => setVetData({ ...vetData, adminNotes: e.target.value })}
-                rows={3}
-                className="input resize-none"
-                placeholder="Add notes about this entry..."
-              />
+                rows={3} className="input resize-none" placeholder="Add notes about this entry…" />
             </div>
-
-            {/* Actions */}
             <div className="flex gap-3 pt-2">
               <Button type="submit" isLoading={vetting} className="flex-1">
-                <CheckCircle className="w-4 h-4" />
-                Approve Entry
+                <CheckCircle className="w-4 h-4" />Approve Entry
               </Button>
-              <Button type="button" variant="outline" onClick={() => setSelectedEntry(null)} className="flex-1">
-                Cancel
-              </Button>
+              <Button type="button" variant="outline" onClick={() => setSelectedEntry(null)} className="flex-1">Cancel</Button>
             </div>
           </form>
         )}
+      </Modal>
+
+      {/* ── Delete Confirm Modal ───────────────────────────────────────────── */}
+      <Modal isOpen={!!deleteConfirm} onClose={() => setDeleteConfirm(null)} title="Delete Entry" size="sm">
+        <div className="space-y-5">
+          <div className="flex items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center">
+              <AlertTriangle className="w-8 h-8 text-red-600" />
+            </div>
+          </div>
+          <div className="text-center space-y-2">
+            <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>Delete this entry?</p>
+            {deleteConfirm && (
+              <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+                {typeof deleteConfirm.worker === 'object' ? deleteConfirm.worker.name : 'Worker'} ·{' '}
+                {formatDate(deleteConfirm.date)} ·{' '}
+                {formatTime(deleteConfirm.adminTime ?? deleteConfirm.time)}
+              </p>
+            )}
+            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>
+              This cannot be undone. If already approved, the worker's weekly payment totals may change.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <Button variant="danger" onClick={handleDeleteEntry} isLoading={deleting} className="flex-1">Delete</Button>
+            <Button variant="outline" onClick={() => setDeleteConfirm(null)} className="flex-1">Cancel</Button>
+          </div>
+        </div>
       </Modal>
     </div>
   );

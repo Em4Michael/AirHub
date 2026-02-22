@@ -12,8 +12,9 @@ export enum UserStatus {
 
 export enum PaymentStatus {
   PENDING = 'pending',
+  APPROVED = 'approved',
   PAID = 'paid',
-  PROCESSING = 'processing',
+  DENIED = 'denied',
 }
 
 export interface WeeklyPayment {
@@ -23,19 +24,36 @@ export interface WeeklyPayment {
   weekEnd: string;
   weekNumber: number;
   year: number;
+  weekStartDay: number;
   totalHours: number;
   avgQuality: number;
   entryCount: number;
+  /**
+   * hourlyRate stored on the record — use this (not env var) to display
+   * accurate earnings. Reflects benchmark.payPerHour at time of creation.
+   */
+  hourlyRate: number;
   baseEarnings: number;
   performanceMultiplier: number;
   bonusEarnings: number;
   extraBonus?: number;
   extraBonusReason?: string;
   totalEarnings: number;
-  status: 'pending' | 'approved' | 'paid';
+  /**
+   * paymentType:
+   * 'regular' = weekly work-based payment
+   * 'bonus'   = standalone bonus payment (created by superadmin)
+   */
+  paymentType: 'regular' | 'bonus';
+  status: 'pending' | 'approved' | 'paid' | 'denied';
   paid: boolean;
   paidDate?: string;
   paidBy?: string | User;
+  approvedBy?: string | User;
+  approvedAt?: string;
+  deniedBy?: string | User;
+  deniedAt?: string;
+  denialReason?: string;
   notes?: string;
   adminNotes?: string;
   createdAt: string;
@@ -51,9 +69,11 @@ export interface PaymentSummary {
   hours: number;
   quality: number;
   earnings: number;
+  hourlyRate: number;
   paid: boolean;
   paidDate?: string;
   status: string;
+  paymentType: 'regular' | 'bonus';
   extraBonus?: number;
   extraBonusReason?: string;
   notes?: string;
@@ -64,17 +84,21 @@ export interface UserStatsResponse {
     id: string;
     name: string;
     email: string;
+    phone?: string | null;
     role: string;
-    status: string;
     isApproved: boolean;
+    weekStartDay: number;
     createdAt: string;
     profilePhoto?: string | null;
     bankDetails?: {
       bankName?: string;
       accountName?: string;
       accountNumber?: string;
-      routingNumber?: string;
     };
+  };
+  currentWeekRange?: {
+    weekStart: string;
+    weekEnd: string;
   };
   lifetime: {
     totalHours: number;
@@ -95,23 +119,28 @@ export interface User {
   _id: string;
   email: string;
   name: string;
+  /** Phone number — optional, added for contact/payment purposes */
+  phone?: string | null;
   role: UserRole;
   status: UserStatus;
   profilePhoto?: string | null;
   bankDetails?: BankDetails;
   extraBonus?: number;
   extraBonusReason?: string;
+  weekStartDay?: number;
   createdAt: string;
   updatedAt: string;
   isApproved?: boolean;
   weeklyPayments?: WeeklyPayment[];
 }
 
+/**
+ * Routing number intentionally removed per business requirements.
+ */
 export interface BankDetails {
   bankName: string;
   accountNumber: string;
   accountName: string;
-  routingNumber?: string;
 }
 
 export interface Profile {
@@ -122,6 +151,7 @@ export interface Profile {
   country: string;
   accountBearerName: string;
   defaultWorker: string | User;
+  secondWorker?: string | User | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -137,9 +167,11 @@ export interface Entry {
   adminTime?: number;
   adminQuality?: number;
   adminNotes?: string;
+  effectiveTime?: number;
+  effectiveQuality?: number;
   adminApproved: boolean;
-  adminApprovedBy?: string | User;
-  adminApprovedAt?: string;
+  approvedBy?: string | User;
+  approvedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -150,6 +182,8 @@ export interface Benchmark {
   qualityBenchmark: number;
   startDate: string;
   endDate: string;
+  /** Pay per hour for this benchmark period. Null = use HOURLY_RATE env var */
+  payPerHour?: number | null;
   thresholds: {
     excellent: number;
     good: number;
@@ -173,14 +207,34 @@ export interface DashboardApiResponse {
     totalEntries: number;
     totalTime: number;
     avgQuality: number;
+    avgTime: number;
     overallPerformance?: number;
+    assignedProfiles: number;
   };
-  earnings: {
-    finalEarnings: number;
+  performance?: {
+    timePercentage: number;
+    qualityPercentage: number;
+    overallPercentage: number;
+  } | null;
+  earnings?: {
+    baseEarnings: number;
     multiplier: number;
     tier: string;
-  };
+    bonus: number;
+    finalEarnings: number;
+    extraBonus?: number;
+    hourlyRate?: number;
+  } | null;
+  benchmark?: {
+    timeBenchmark: number;
+    qualityBenchmark: number;
+    thresholds: Benchmark['thresholds'];
+    startDate: string;
+    endDate: string;
+    payPerHour?: number | null;
+  } | null;
   weeklyData: Array<{
+    weekStart: string;
     totalTime: number;
     avgTime: number;
     avgQuality: number;
@@ -194,8 +248,13 @@ export interface DashboardApiResponse {
     effectiveTime?: number;
     effectiveQuality?: number;
     adminApproved?: boolean;
+    profile?: string;
     notes?: string;
   }>;
+  dateRange: {
+    start: string;
+    end: string;
+  };
 }
 
 export interface DashboardData {
@@ -241,11 +300,12 @@ export interface ApiResponse<T = any> {
 
 export interface PaginatedResponse<T> {
   success: boolean;
+  message?: string;
   data: T[];
   pagination: {
     page: number;
-    limit: number;
-    total: number;
     pages: number;
+    total: number;
+    count: number;
   };
 }

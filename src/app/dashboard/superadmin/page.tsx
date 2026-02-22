@@ -9,10 +9,10 @@ import { Alert } from '@/components/ui/Alert';
 import { superadminApi } from '@/lib/api/superadmin.api';
 import { adminApi } from '@/lib/api/admin.api';
 import { formatTime, formatPercentage, formatDate, formatCurrency } from '@/lib/utils/format';
-import { 
-  Users, Briefcase, FileText, TrendingUp, Trophy, Clock, 
+import {
+  Users, Briefcase, FileText, TrendingUp, Trophy, Clock,
   Award, UserCheck, CheckCircle, Plus, ArrowRight, Activity,
-  AlertTriangle, Star, Settings, Shield, DollarSign, BarChart3
+  AlertTriangle, Star, Settings, Shield, DollarSign, BarChart3,
 } from 'lucide-react';
 
 interface WorkerRanking {
@@ -56,7 +56,6 @@ export default function SuperadminDashboard() {
         adminApi.getRankedProfiles(),
       ]);
 
-      // Combine stats
       const combinedStats: SystemStats = {
         totalUsers: systemStatsRes.data?.totalUsers || workerStatsRes.data?.totalUsers || 0,
         totalProfiles: workerStatsRes.data?.totalProfiles || 0,
@@ -115,12 +114,10 @@ export default function SuperadminDashboard() {
             System overview and complete management
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="danger" className="px-3 py-1.5">
-            <Shield className="w-4 h-4 mr-1" />
-            SUPERADMIN
-          </Badge>
-        </div>
+        <Badge variant="danger" className="px-3 py-1.5 self-start md:self-auto">
+          <Shield className="w-4 h-4 mr-1" />
+          SUPERADMIN
+        </Badge>
       </div>
 
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
@@ -154,9 +151,7 @@ export default function SuperadminDashboard() {
                 <p className="text-3xl font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
                   {stats?.totalProfiles || 0}
                 </p>
-                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                  Client accounts
-                </p>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Client accounts</p>
               </div>
               <div className="w-14 h-14 rounded-xl bg-green-100 flex items-center justify-center">
                 <Briefcase className="w-7 h-7 text-green-600" />
@@ -173,9 +168,7 @@ export default function SuperadminDashboard() {
                 <p className="text-3xl font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
                   {stats?.activeBenchmarks || 0}
                 </p>
-                <p className="text-xs mt-1 text-green-600 font-medium">
-                  Performance targets
-                </p>
+                <p className="text-xs mt-1 text-green-600 font-medium">Performance targets</p>
               </div>
               <div className="w-14 h-14 rounded-xl bg-purple-100 flex items-center justify-center">
                 <BarChart3 className="w-7 h-7 text-purple-600" />
@@ -192,9 +185,7 @@ export default function SuperadminDashboard() {
                 <p className="text-3xl font-bold mt-1" style={{ color: 'var(--text-primary)' }}>
                   {formatCurrency(stats?.totalBonuses || 0)}
                 </p>
-                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                  Extra bonuses paid
-                </p>
+                <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>Extra bonuses paid</p>
               </div>
               <div className="w-14 h-14 rounded-xl bg-yellow-100 flex items-center justify-center">
                 <DollarSign className="w-7 h-7 text-yellow-600" />
@@ -348,6 +339,21 @@ export default function SuperadminDashboard() {
                 </div>
               </div>
             </Link>
+
+            <Link href="/superadmin/profiles" className="block">
+              <div className="p-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 transition-colors border-2 border-indigo-200 hover:border-indigo-300">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <Briefcase className="w-5 h-5 text-indigo-600" />
+                    <div>
+                      <p className="font-semibold text-indigo-900">Profiles</p>
+                      <p className="text-sm text-indigo-700">Client accounts</p>
+                    </div>
+                  </div>
+                  <ArrowRight className="w-5 h-5 text-indigo-500" />
+                </div>
+              </div>
+            </Link>
           </CardContent>
         </Card>
 
@@ -359,7 +365,11 @@ export default function SuperadminDashboard() {
                 <Trophy className="w-5 h-5 text-yellow-500" />
                 Worker Leaderboard
               </CardTitle>
-              <Link href="/superadmin/rankings" className="text-sm font-medium hover:underline" style={{ color: 'var(--accent-color)' }}>
+              <Link
+                href="/superadmin/rankings"
+                className="text-sm font-medium hover:underline"
+                style={{ color: 'var(--accent-color)' }}
+              >
                 View All
               </Link>
             </div>
@@ -378,12 +388,10 @@ export default function SuperadminDashboard() {
                     className="flex items-center gap-4 p-3 rounded-xl transition-all hover:shadow-md"
                     style={{ backgroundColor: 'var(--bg-tertiary)' }}
                   >
-                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${getRankBadgeColor(index)}`}>
-                      {index < 3 ? (
-                        <Star className="w-5 h-5" />
-                      ) : (
-                        index + 1
-                      )}
+                    <div
+                      className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${getRankBadgeColor(index)}`}
+                    >
+                      {index < 3 ? <Star className="w-5 h-5" /> : index + 1}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>

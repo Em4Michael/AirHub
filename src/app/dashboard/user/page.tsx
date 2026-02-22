@@ -5,57 +5,160 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Badge } from '@/components/ui/Badge';
 import { Alert } from '@/components/ui/Alert';
 import { userApi } from '@/lib/api/user.api';
-import { DashboardData, Entry } from '@/types';
-import { formatCurrency, formatPercentage, formatTime } from '@/lib/utils/format';
+import { DashboardData, DashboardApiResponse, Entry, WeeklyPayment } from '@/types';
+import { formatCurrency, formatPercentage, formatTime, formatDate } from '@/lib/utils/format';
+import { QUALITY_WEIGHT, TIME_WEIGHT } from '@/lib/utils/performance';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { TrendingUp, Clock, Award, DollarSign, Calendar, CheckCircle } from 'lucide-react';
 
+// ─── helpers ────────────────────────────────────────────────────────────────
+
+function getWeekBoundaries(
+  date: Date,
+  weekStartDay: number = 2
+): { weekStart: Date; weekEnd: Date } {
+  const d = new Date(date);
+  d.setUTCHours(0, 0, 0, 0);
+  const currentDay = d.getUTCDay();
+  const daysBack = (currentDay - weekStartDay + 7) % 7;
+  const weekStart = new Date(d);
+  weekStart.setUTCDate(d.getUTCDate() - daysBack);
+  weekStart.setUTCHours(0, 0, 0, 0);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setUTCDate(weekStart.getUTCDate() + 6);
+  weekEnd.setUTCHours(23, 59, 59, 999);
+  return { weekStart, weekEnd };
+}
+
+// ─── Derived stats from WeeklyPayment records ────────────────────────────────
+// These are the ONLY source of truth for hours, quality, and earnings.
+// The dashboard summary endpoint recalculates from raw entries and does not
+// match stored payment values — never use it for stat card display.
+
+interface PaymentStats {
+  // This week (most recent WeeklyPayment record)
+  weekHours: number;
+  weekQuality: number;
+  weekEarnings: number;
+  weekEntryCount: number;
+  weekPerformance: number;
+  weekStatus: string;
+  weekPaid: boolean;
+  weekPaidDate?: string;
+  // Lifetime (all WeeklyPayment records summed)
+  lifetimeHours: number;
+  lifetimeQuality: number;   // weighted average
+  lifetimeEarnings: number;
+  lifetimeEntryCount: number;
+}
+
+function derivePaymentStats(payments: WeeklyPayment[]): PaymentStats {
+  const empty: PaymentStats = {
+    weekHours: 0, weekQuality: 0, weekEarnings: 0, weekEntryCount: 0,
+    weekPerformance: 0, weekStatus: 'pending', weekPaid: false,
+    lifetimeHours: 0, lifetimeQuality: 0, lifetimeEarnings: 0, lifetimeEntryCount: 0,
+  };
+  if (!payments.length) return empty;
+
+  const sorted = [...payments].sort(
+    (a, b) => new Date(b.weekStart).getTime() - new Date(a.weekStart).getTime()
+  );
+  const latest = sorted[0];
+
+  // Lifetime totals
+  let totalWeightedQuality = 0;
+  let totalEntries = 0;
+  const lifetimeHours = sorted.reduce((s, p) => s + (Number(p.totalHours) || 0), 0);
+  const lifetimeEarnings = sorted.reduce((s, p) => s + (Number(p.totalEarnings) || 0), 0);
+  sorted.forEach((p) => {
+    const ec = Number(p.entryCount) || 0;
+    totalEntries += ec;
+    totalWeightedQuality += (Number(p.avgQuality) || 0) * ec;
+  });
+  const lifetimeQuality = totalEntries > 0 ? totalWeightedQuality / totalEntries : 0;
+
+  // This week performance score: 60% quality + 40% time-normalised
+  // Use stored avgQuality and totalHours from payment record
+  const weekHours = Number(latest.totalHours) || 0;
+  const weekQuality = Number(latest.avgQuality) || 0;
+  const weekEntryCount = Number(latest.entryCount) || 0;
+  const avgDailyHours = weekEntryCount > 0 ? weekHours / weekEntryCount : 0;
+  const timeNorm = Math.min((avgDailyHours / 8) * 100, 100);
+  const weekPerformance = weekQuality * QUALITY_WEIGHT + timeNorm * TIME_WEIGHT;
+
+  return {
+    weekHours,
+    weekQuality,
+    weekEarnings: Number(latest.totalEarnings) || 0,
+    weekEntryCount,
+    weekPerformance,
+    weekStatus: latest.status ?? 'pending',
+    weekPaid: latest.paid ?? false,
+    weekPaidDate: latest.paidDate,
+    lifetimeHours,
+    lifetimeQuality,
+    lifetimeEarnings,
+    lifetimeEntryCount: totalEntries,
+  };
+}
+
+// ─── component ──────────────────────────────────────────────────────────────
+
 export default function UserDashboard() {
   const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [payments, setPayments] = useState<WeeklyPayment[]>([]);
+  const [stats, setStats] = useState<PaymentStats>(derivePaymentStats([]));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [weekStartDay] = useState<number>(2);
 
   useEffect(() => {
-    fetchDashboard();
+    // Fetch both in parallel — neither blocks the other
+    Promise.all([fetchDashboard(), fetchPayments()]).finally(() => setLoading(false));
   }, []);
+
+  // Re-derive stats whenever payments change
+  useEffect(() => {
+    setStats(derivePaymentStats(payments));
+  }, [payments]);
+
+  const fetchPayments = async () => {
+    try {
+      const res = await userApi.getMyPayments(1, 500);
+      if (res.success && Array.isArray(res.data)) {
+        setPayments(res.data as WeeklyPayment[]);
+      }
+    } catch (err) {
+      console.warn('Could not fetch payment history:', err);
+    }
+  };
 
   const fetchDashboard = async () => {
     try {
       const response = await userApi.getDashboard();
-      
       if (!response.success || !response.data) {
         throw new Error(response.message || 'No dashboard data received');
       }
+      const apiData = response.data;
+      const approvedDaily = apiData.dailyData ?? [];
 
-      const raw = response.data;
+      setDashboard({
+        // totalTime / averageQuality / totalEntries only used for the entries
+        // list and chart — NOT for stat cards (payments are the source there)
+        totalTime: apiData.summary.totalTime ?? 0,
+        totalEntries: apiData.summary.totalEntries ?? 0,
+        averageQuality: apiData.summary.avgQuality ?? 0,
+        weeklyPerformance: apiData.summary.overallPerformance ?? 0,
+        earnings: 0,
+        performanceLevel: apiData.earnings?.tier ?? 'average',
+        bonusMultiplier: apiData.earnings?.multiplier ?? 1.0,
 
-      const safeGet = (obj: any, path: string[], defaultVal: any = 0) => {
-        let current = obj;
-        for (const key of path) {
-          current = current?.[key];
-          if (current === undefined) return defaultVal;
-        }
-        return current;
-      };
-
-      // Only use paid data for display
-      const dashboardData: DashboardData = {
-        totalTime: safeGet(raw, ['summary', 'totalTime'], 0),
-        totalEntries: safeGet(raw, ['summary', 'totalEntries'], 0),
-        averageQuality: safeGet(raw, ['summary', 'avgQuality'], 0),
-        weeklyPerformance: safeGet(raw, ['summary', 'overallPerformance'], 0),
-
-        earnings: safeGet(raw, ['earnings', 'finalEarnings'], 0), // should be paid only
-        performanceLevel: safeGet(raw, ['earnings', 'tier'], 'average'),
-        bonusMultiplier: safeGet(raw, ['earnings', 'multiplier'], 1.0),
-
-        recentEntries: (safeGet(raw, ['dailyData'], []) as any[])
-          .filter((d: any) => d.adminApproved === true) // only approved
+        recentEntries: approvedDaily
           .slice(-10)
           .reverse()
-          .map((d: any) => ({
+          .map((d): Entry => ({
             _id: d._id || `temp-${d.date}`,
-            worker: d.worker || 'unknown',
+            worker: 'unknown',
             profile: d.profile || 'unknown',
             date: d.date,
             time: d.effectiveTime ?? d.time ?? 0,
@@ -64,49 +167,29 @@ export default function UserDashboard() {
             notes: d.notes ?? '',
             createdAt: d.date ?? new Date().toISOString(),
             updatedAt: d.date ?? new Date().toISOString(),
-          })) as Entry[],
-
-        chartData: (safeGet(raw, ['dailyData'], []) as any[])
-          .filter((d: any) => d.adminApproved === true)
-          .map((d: any) => ({
-            date: new Date(d.date).toISOString().split('T')[0],
-            time: d.effectiveTime ?? d.time ?? 0,
-            quality: d.effectiveQuality ?? d.quality ?? 0,
-            overall: ((d.effectiveQuality ?? d.quality ?? 0) * 0.7 + (d.effectiveTime ?? d.time ?? 0) * 0.3),
           })),
 
-        weeklyData: (() => {
-          const latest = safeGet(raw, ['weeklyData'], []).slice(-1)[0];
-          if (!latest) return { hours: 0, quality: 0, earnings: 0, performance: 0 };
-
-          const perf = (latest.avgQuality * 0.7 + (latest.avgTime ?? 0) * 0.3);
+        chartData: approvedDaily.map((d) => {
+          const t = d.effectiveTime ?? d.time ?? 0;
+          const q = d.effectiveQuality ?? d.quality ?? 0;
           return {
-            hours: latest.totalTime ?? latest.avgTime ?? 0,
-            quality: latest.avgQuality ?? 0,
-            earnings: (latest.totalTime ?? 0) * 2000,
-            performance: perf,
+            date: new Date(d.date).toISOString().split('T')[0],
+            time: t,
+            quality: q,
+            overall: q * QUALITY_WEIGHT + t * TIME_WEIGHT,
           };
-        })(),
-      };
+        }),
 
-      setDashboard(dashboardData);
-    } catch (err: any) {
-      console.error('Dashboard fetch error:', err);
-      setError(err?.response?.data?.message || err.message || 'Failed to load dashboard');
-      setDashboard({
-        totalTime: 0,
-        totalEntries: 0,
-        averageQuality: 0,
-        weeklyPerformance: 0,
-        earnings: 0,
-        performanceLevel: 'average',
-        bonusMultiplier: 1.0,
-        recentEntries: [],
-        chartData: [],
         weeklyData: { hours: 0, quality: 0, earnings: 0, performance: 0 },
       });
-    } finally {
-      setLoading(false);
+    } catch (err: any) {
+      setError(err?.response?.data?.message || err.message || 'Failed to load dashboard');
+      setDashboard({
+        totalTime: 0, totalEntries: 0, averageQuality: 0,
+        weeklyPerformance: 0, earnings: 0, performanceLevel: 'average',
+        bonusMultiplier: 1.0, recentEntries: [], chartData: [],
+        weeklyData: { hours: 0, quality: 0, earnings: 0, performance: 0 },
+      });
     }
   };
 
@@ -118,78 +201,33 @@ export default function UserDashboard() {
     );
   }
 
-  if (error) {
-    return <Alert type="error" message={error} />;
-  }
-
+  if (error) return <Alert type="error" message={error} />;
   if (!dashboard) {
-    return (
-      <Alert 
-        type="info" 
-        message="No dashboard data available. Start creating entries!" 
-      />
-    );
+    return <Alert type="info" message="No dashboard data available. Start creating entries!" />;
   }
 
-  const performanceBadge = {
-    excellent: { variant: 'success' as const, label: 'Excellent ⭐' },
-    good: { variant: 'primary' as const, label: 'Good 👍' },
-    average: { variant: 'warning' as const, label: 'Average' },
-    minimum: { variant: 'warning' as const, label: 'Minimum' },
-    below: { variant: 'danger' as const, label: 'Below Target' },
-  }[dashboard.performanceLevel] || { variant: 'warning' as const, label: 'Average' };
-
-  // ──── Only show approved & paid entries ────
-  const getCurrentWeekEntries = () => {
+  // ── Current-week entries list (for the entries table at the bottom) ────────
+  const getCurrentWeekEntries = (): Entry[] => {
     if (!dashboard?.recentEntries?.length) return [];
-
-    const now = new Date();
-    const dayOfWeek = now.getDay();
-    const daysToMonday = dayOfWeek === 0 ? 6 : dayOfWeek - 1;
-
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(now.getDate() - daysToMonday);
-    startOfWeek.setHours(0, 0, 0, 0);
-
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 6);
-    endOfWeek.setHours(23, 59, 59, 999);
-
+    const { weekStart, weekEnd } = getWeekBoundaries(new Date(), weekStartDay);
     return dashboard.recentEntries.filter((entry) => {
-      const entryDate = new Date(entry.date.split('T')[0] + 'T00:00:00');
-      return entryDate >= startOfWeek && entryDate <= endOfWeek && entry.adminApproved;
+      const entryDate = new Date(entry.date.split('T')[0] + 'T00:00:00Z');
+      return entryDate >= weekStart && entryDate <= weekEnd && entry.adminApproved;
     });
   };
-
   const weekEntries = getCurrentWeekEntries();
 
-  const calculateWeeklyTotals = () => {
-    if (weekEntries.length === 0) {
-      return {
-        totalHours: 0,
-        avgQuality: 0,
-        overallPerformance: 0,
-      };
-    }
+  // ── Helpers ───────────────────────────────────────────────────────────────
+  const tierColor = (score: number) =>
+    score >= 80 ? '#10b981' : score >= 70 ? '#3b82f6' : score >= 60 ? '#f59e0b' : '#ef4444';
+  const tierLabel = (score: number) =>
+    score >= 80 ? 'Excellent' : score >= 70 ? 'Good' : score >= 60 ? 'Average' : 'Below';
 
-    const totalHours = weekEntries.reduce((sum, entry) => sum + (entry.time || 0), 0);
-    const totalQuality = weekEntries.reduce((sum, entry) => sum + (entry.quality || 0), 0);
-    const avgQuality = totalQuality / weekEntries.length;
-
-    const daysWorked = weekEntries.length;
-    const expectedHours = daysWorked * 8;
-    const timePercentage = expectedHours > 0 ? (totalHours / expectedHours) * 100 : 0;
-    
-    const overallPerformance = (avgQuality * 0.7) + (timePercentage * 0.3);
-
-    return {
-      totalHours,
-      avgQuality,
-      overallPerformance,
-    };
-  };
-
-  const weeklyTotals = calculateWeeklyTotals();
+  const earningsSubtitle = stats.weekPaid
+    ? `Paid on ${formatDate(stats.weekPaidDate || '')}`
+    : stats.weekStatus === 'approved'
+    ? 'Approved — ready for payout'
+    : 'Pending admin approval';
 
   interface StatCardProps {
     icon: React.ElementType;
@@ -200,33 +238,20 @@ export default function UserDashboard() {
     iconColor?: string;
   }
 
-  const StatCard: React.FC<StatCardProps> = ({ 
-    icon: Icon, 
-    label, 
-    weeklyValue, 
-    lifetimeValue, 
-    subtitle, 
-    iconColor 
-  }) => (
-    <div 
+  const StatCard: React.FC<StatCardProps> = ({ icon: Icon, label, weeklyValue, lifetimeValue, subtitle, iconColor }) => (
+    <div
       className="card p-5 hover:shadow-xl transition-all duration-300 group relative overflow-hidden"
-      style={{ 
-        backgroundColor: 'var(--bg-secondary)', 
-        borderColor: 'var(--border-color)' 
-      }}
+      style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
     >
       <div className="flex items-start justify-between relative mb-3">
-        <p 
-          className="text-xs font-bold uppercase tracking-wide" 
-          style={{ color: 'var(--text-muted)' }}
-        >
+        <p className="text-xs font-bold uppercase tracking-wide" style={{ color: 'var(--text-muted)' }}>
           {label}
         </p>
-        <div 
-          className="w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:shadow-lg relative"
+        <div
+          className="w-12 h-12 rounded-xl flex items-center justify-center transition-all duration-300 group-hover:scale-110 group-hover:shadow-lg"
           style={{ backgroundColor: iconColor || 'var(--accent-color)' }}
         >
-          <Icon className="w-6 h-6 text-white relative z-10" />
+          <Icon className="w-6 h-6 text-white" />
         </div>
       </div>
       <div className="space-y-1">
@@ -234,14 +259,11 @@ export default function UserDashboard() {
           <p className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>
             {weeklyValue}
           </p>
-          <span 
+          <span
             className="text-xs font-semibold px-2 py-0.5 rounded-full"
-            style={{ 
-              backgroundColor: 'rgba(139, 92, 246, 0.15)', 
-              color: 'var(--accent-color)' 
-            }}
+            style={{ backgroundColor: 'rgba(139, 92, 246, 0.15)', color: 'var(--accent-color)' }}
           >
-            This Week (Paid)
+            This Week
           </span>
         </div>
         <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
@@ -263,80 +285,86 @@ export default function UserDashboard() {
         <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>
           Dashboard
         </h1>
-        <p 
-          className="mt-1 flex items-center gap-2" 
-          style={{ color: 'var(--text-secondary)' }}
-        >
+        <p className="mt-1 flex items-center gap-2" style={{ color: 'var(--text-secondary)' }}>
           <Calendar className="w-4 h-4" />
-          Week of {new Date().toLocaleDateString('en-US', { 
-            month: 'short', 
-            day: 'numeric', 
-            year: 'numeric' 
-          })}
+          Week of{' '}
+          {new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
         </p>
       </div>
 
-      {/* Weekly Stats Cards – Only Paid */}
+      {/* Payment status banner */}
+      {payments.length > 0 && (() => {
+        const latest = [...payments].sort(
+          (a, b) => new Date(b.weekStart).getTime() - new Date(a.weekStart).getTime()
+        )[0];
+        if (latest.paid || latest.status === 'paid') {
+          return (
+            <Alert type="success" message={`This week's earnings (${formatCurrency(latest.totalEarnings)}) were paid on ${formatDate(latest.paidDate || '')}.`} />
+          );
+        }
+        if (latest.status === 'approved') {
+          return (
+            <Alert type="info" message={`This week's performance is approved. ${formatCurrency(latest.totalEarnings)} is ready for payout.`} />
+          );
+        }
+        if (latest.status === 'pending') {
+          return (
+            <Alert type="warning" message="This week's entries are pending admin approval." />
+          );
+        }
+        return null;
+      })()}
+
+      {/* ── Stat cards — ALL values from WeeklyPayment records ─────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={Clock}
-          label="Paid Hours Worked"
-          weeklyValue={formatTime(weeklyTotals.totalHours)}
-          lifetimeValue={formatTime(dashboard.totalTime)}
-          subtitle={`${weekEntries.length} approved days this week`}
+          label="Approved Hours"
+          weeklyValue={formatTime(stats.weekHours)}
+          lifetimeValue={formatTime(stats.lifetimeHours)}
+          subtitle={`${stats.weekEntryCount} vetted entries this week`}
           iconColor="#3b82f6"
         />
         <StatCard
           icon={Award}
-          label="Paid Quality Score"
-          weeklyValue={formatPercentage(weeklyTotals.avgQuality)}
-          lifetimeValue={formatPercentage(dashboard.averageQuality)}
-          subtitle="Average across paid entries"
+          label="Approved Quality"
+          weeklyValue={formatPercentage(stats.weekQuality)}
+          lifetimeValue={formatPercentage(stats.lifetimeQuality)}
+          subtitle="Average across vetted entries"
           iconColor="#10b981"
         />
         <StatCard
           icon={TrendingUp}
-          label="Paid Overall Performance"
+          label="Overall Performance"
           weeklyValue={
             <span className="flex items-center gap-2">
-              {formatPercentage(weeklyTotals.overallPerformance)}
-              <span 
+              {formatPercentage(stats.weekPerformance)}
+              <span
                 className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                style={{ 
-                  backgroundColor: 
-                    weeklyTotals.overallPerformance >= 80 ? '#10b981' :
-                    weeklyTotals.overallPerformance >= 70 ? '#3b82f6' :
-                    weeklyTotals.overallPerformance >= 60 ? '#f59e0b' : '#ef4444',
-                  color: 'white'
-                }}
+                style={{ backgroundColor: tierColor(stats.weekPerformance), color: 'white' }}
               >
-                {weeklyTotals.overallPerformance >= 80 ? 'Excellent' :
-                 weeklyTotals.overallPerformance >= 70 ? 'Good' :
-                 weeklyTotals.overallPerformance >= 60 ? 'Average' : 'Below'}
+                {tierLabel(stats.weekPerformance)}
               </span>
             </span>
           }
-          lifetimeValue={`${dashboard.totalEntries} entries`}
-          subtitle="70% Quality + 30% Time (Paid)"
+          lifetimeValue={`${stats.lifetimeEntryCount} total entries`}
+          subtitle="60% Quality + 40% Time"
           iconColor="#8b5cf6"
         />
         <StatCard
           icon={DollarSign}
-          label="Paid Earnings"
-          weeklyValue={formatCurrency(dashboard.weeklyData?.earnings || 0)}
-          lifetimeValue={formatCurrency(dashboard.earnings)}
-          subtitle={`${dashboard.bonusMultiplier}x multiplier (Paid)`}
+          label="Approved Earnings"
+          weeklyValue={formatCurrency(stats.weekEarnings)}
+          lifetimeValue={formatCurrency(stats.lifetimeEarnings)}
+          subtitle={earningsSubtitle}
           iconColor="#f59e0b"
         />
       </div>
 
-      {/* Performance Breakdown */}
-      <div 
+      {/* ── Performance Breakdown (uses this week's payment stats) ──────────── */}
+      <div
         className="card p-6"
-        style={{ 
-          backgroundColor: 'var(--bg-secondary)', 
-          borderColor: 'var(--border-color)' 
-        }}
+        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
       >
         <div className="flex items-center justify-between mb-6">
           <div>
@@ -344,253 +372,180 @@ export default function UserDashboard() {
               Performance Breakdown
             </h3>
             <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-              How your overall score is calculated (70% Quality + 30% Time)
+              This week — vetted entries only (60% Quality + 40% Time)
             </p>
           </div>
-          <div 
-            className="text-3xl font-bold"
-            style={{ 
-              color: 
-                weeklyTotals.overallPerformance >= 80 ? '#10b981' :
-                weeklyTotals.overallPerformance >= 70 ? '#3b82f6' :
-                weeklyTotals.overallPerformance >= 60 ? '#f59e0b' : '#ef4444'
-            }}
-          >
-            {formatPercentage(weeklyTotals.overallPerformance)}
+          <div className="text-3xl font-bold" style={{ color: tierColor(stats.weekPerformance) }}>
+            {formatPercentage(stats.weekPerformance)}
           </div>
         </div>
 
         <div className="space-y-4">
-          {/* Quality Component (70%) */}
+          {/* Quality bar */}
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                Quality Score (70% weight)
+                Quality Score (60% weight)
               </span>
               <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                {formatPercentage(weeklyTotals.avgQuality)}
+                {formatPercentage(stats.weekQuality)}
               </span>
             </div>
             <div className="relative h-3 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-              <div 
+              <div
                 className="absolute h-full rounded-full transition-all duration-500"
-                style={{ 
-                  width: `${Math.min(weeklyTotals.avgQuality, 100)}%`,
-                  backgroundColor: '#10b981'
-                }}
+                style={{ width: `${Math.min(stats.weekQuality, 100)}%`, backgroundColor: '#10b981' }}
               />
             </div>
             <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-              Contributes {(weeklyTotals.avgQuality * 0.7).toFixed(1)} points to overall
+              Contributes {(stats.weekQuality * QUALITY_WEIGHT).toFixed(1)} points to overall
             </p>
           </div>
 
-          {/* Time Component (30%) */}
+          {/* Time bar */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
-                Time Achievement (30% weight)
-              </span>
-              <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                {formatTime(weeklyTotals.totalHours)} / {weekEntries.length * 8}h
-              </span>
-            </div>
-            <div className="relative h-3 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-              <div 
-                className="absolute h-full rounded-full transition-all duration-500"
-                style={{ 
-                  width: `${Math.min((weeklyTotals.totalHours / (weekEntries.length * 8)) * 100, 100)}%`,
-                  backgroundColor: '#3b82f6'
-                }}
-              />
-            </div>
-            <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-              Contributes {(((weeklyTotals.totalHours / (weekEntries.length * 8 || 1)) * 100) * 0.3).toFixed(1)} points to overall
-            </p>
+            {(() => {
+              const avgDaily = stats.weekEntryCount > 0 ? stats.weekHours / stats.weekEntryCount : 0;
+              const timeNormPct = Math.min((avgDaily / 8) * 100, 100);
+              return (
+                <>
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold" style={{ color: 'var(--text-primary)' }}>
+                      Time Achievement (40% weight)
+                    </span>
+                    <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
+                      {formatTime(stats.weekHours)} / {stats.weekEntryCount * 8}h target
+                    </span>
+                  </div>
+                  <div className="relative h-3 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                    <div
+                      className="absolute h-full rounded-full transition-all duration-500"
+                      style={{ width: `${timeNormPct}%`, backgroundColor: '#3b82f6' }}
+                    />
+                  </div>
+                  <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+                    Contributes {(timeNormPct * TIME_WEIGHT).toFixed(1)} points to overall
+                  </p>
+                </>
+              );
+            })()}
           </div>
 
-          {/* Overall Bar */}
+          {/* Overall bar */}
           <div className="pt-4 border-t" style={{ borderColor: 'var(--border-color)' }}>
             <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>Overall Performance</span>
               <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                Overall Performance
-              </span>
-              <span className="text-sm font-bold" style={{ color: 'var(--text-primary)' }}>
-                {formatPercentage(weeklyTotals.overallPerformance)}
+                {formatPercentage(stats.weekPerformance)}
               </span>
             </div>
             <div className="relative h-4 rounded-full overflow-hidden" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-              <div 
+              <div
                 className="absolute h-full rounded-full transition-all duration-500 flex items-center justify-center"
-                style={{ 
-                  width: `${Math.min(weeklyTotals.overallPerformance, 100)}%`,
-                  backgroundColor: 
-                    weeklyTotals.overallPerformance >= 80 ? '#10b981' :
-                    weeklyTotals.overallPerformance >= 70 ? '#3b82f6' :
-                    weeklyTotals.overallPerformance >= 60 ? '#f59e0b' : '#ef4444'
+                style={{
+                  width: `${Math.min(stats.weekPerformance, 100)}%`,
+                  backgroundColor: tierColor(stats.weekPerformance),
                 }}
               >
-                {weeklyTotals.overallPerformance > 10 && (
+                {stats.weekPerformance > 10 && (
                   <span className="text-xs font-bold text-white">
-                    {weeklyTotals.overallPerformance.toFixed(1)}%
+                    {stats.weekPerformance.toFixed(1)}%
                   </span>
                 )}
               </div>
             </div>
           </div>
 
-          {/* Performance Tier */}
-          <div 
+          {/* Tier badge */}
+          <div
             className="p-4 rounded-lg text-center"
-            style={{ 
-              backgroundColor: 
-                weeklyTotals.overallPerformance >= 80 ? 'rgba(16, 185, 129, 0.1)' :
-                weeklyTotals.overallPerformance >= 70 ? 'rgba(59, 130, 246, 0.1)' :
-                weeklyTotals.overallPerformance >= 60 ? 'rgba(245, 158, 11, 0.1)' : 'rgba(239, 68, 68, 0.1)',
-              borderWidth: '2px',
-              borderStyle: 'solid',
-              borderColor: 
-                weeklyTotals.overallPerformance >= 80 ? '#10b981' :
-                weeklyTotals.overallPerformance >= 70 ? '#3b82f6' :
-                weeklyTotals.overallPerformance >= 60 ? '#f59e0b' : '#ef4444'
+            style={{
+              backgroundColor: `${tierColor(stats.weekPerformance)}1a`,
+              border: `2px solid ${tierColor(stats.weekPerformance)}`,
             }}
           >
             <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: 'var(--text-muted)' }}>
               Your Performance Tier
             </p>
-            <p 
-              className="text-2xl font-bold"
-              style={{ 
-                color: 
-                  weeklyTotals.overallPerformance >= 80 ? '#10b981' :
-                  weeklyTotals.overallPerformance >= 70 ? '#3b82f6' :
-                  weeklyTotals.overallPerformance >= 60 ? '#f59e0b' : '#ef4444'
-              }}
-            >
-              {weeklyTotals.overallPerformance >= 80 ? '⭐ Excellent' :
-               weeklyTotals.overallPerformance >= 70 ? '👍 Good' :
-               weeklyTotals.overallPerformance >= 60 ? '📊 Average' : '📉 Below Target'}
+            <p className="text-2xl font-bold" style={{ color: tierColor(stats.weekPerformance) }}>
+              {stats.weekPerformance >= 80 ? '⭐ Excellent'
+                : stats.weekPerformance >= 70 ? '👍 Good'
+                : stats.weekPerformance >= 60 ? '📊 Average'
+                : '📉 Below Target'}
             </p>
             <p className="text-xs mt-1" style={{ color: 'var(--text-secondary)' }}>
-              {weeklyTotals.overallPerformance >= 80 ? 'Outstanding work! Keep it up!' :
-               weeklyTotals.overallPerformance >= 70 ? 'Great job! You\'re performing well.' :
-               weeklyTotals.overallPerformance >= 60 ? 'Good effort. Room for improvement.' : 'Focus on improving quality and consistency.'}
+              {stats.weekPerformance >= 80 ? 'Outstanding work! Keep it up!'
+                : stats.weekPerformance >= 70 ? "Great job! You're performing well."
+                : stats.weekPerformance >= 60 ? 'Good effort. Room for improvement.'
+                : 'Focus on improving quality and consistency.'}
             </p>
           </div>
         </div>
       </div>
 
-      {/* Performance Trends Chart */}
-      <div 
-        className="card p-6" 
-        style={{ 
-          backgroundColor: 'var(--bg-secondary)', 
-          borderColor: 'var(--border-color)' 
-        }}
-      >
+      {/* Chart */}
+      <div className="card p-6" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
         <h3 className="text-xl font-bold mb-6" style={{ color: 'var(--text-primary)' }}>
-          This Week's Performance
+          Recent Performance (Approved Entries)
         </h3>
         {!dashboard.chartData?.length ? (
           <div className="text-center py-12" style={{ color: 'var(--text-muted)' }}>
-            No chart data available yet. Start creating entries to see your performance trends.
+            No chart data yet. Approved entries will appear here.
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={300}>
             <LineChart data={dashboard.chartData.slice(-7)}>
               <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
-              <XAxis 
-                dataKey="date" 
-                stroke="var(--text-secondary)" 
-                style={{ fontSize: '12px' }} 
-              />
-              <YAxis 
-                stroke="var(--text-secondary)" 
-                style={{ fontSize: '12px' }} 
-              />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: 'var(--bg-secondary)', 
-                  border: '1px solid var(--border-color)', 
-                  borderRadius: '0.75rem', 
-                  color: 'var(--text-primary)' 
-                }} 
+              <XAxis dataKey="date" stroke="var(--text-secondary)" style={{ fontSize: '12px' }} />
+              <YAxis stroke="var(--text-secondary)" style={{ fontSize: '12px' }} />
+              <Tooltip
+                contentStyle={{
+                  backgroundColor: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-color)',
+                  borderRadius: '0.75rem',
+                  color: 'var(--text-primary)',
+                }}
               />
               <Legend wrapperStyle={{ paddingTop: '20px' }} />
-              <Line 
-                type="monotone" 
-                dataKey="time" 
-                stroke="#3b82f6" 
-                name="Hours" 
-                strokeWidth={3} 
-                dot={{ r: 4 }} 
-                activeDot={{ r: 6 }} 
-              />
-              <Line 
-                type="monotone" 
-                dataKey="quality" 
-                stroke="#10b981" 
-                name="Quality %" 
-                strokeWidth={3} 
-                dot={{ r: 4 }} 
-                activeDot={{ r: 6 }} 
-              />
+              <Line type="monotone" dataKey="time" stroke="#3b82f6" name="Hours" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+              <Line type="monotone" dataKey="quality" stroke="#10b981" name="Quality %" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
             </LineChart>
           </ResponsiveContainer>
         )}
       </div>
 
-      {/* This Week's Entries */}
-      <div 
-        className="card p-6" 
-        style={{ 
-          backgroundColor: 'var(--bg-secondary)', 
-          borderColor: 'var(--border-color)' 
-        }}
-      >
+      {/* This week's entries */}
+      <div className="card p-6" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
         <h3 className="text-xl font-bold mb-6" style={{ color: 'var(--text-primary)' }}>
           This Week's Entries ({weekEntries.length})
         </h3>
         {weekEntries.length === 0 ? (
           <p className="text-center py-8" style={{ color: 'var(--text-muted)' }}>
-            No entries this week yet. Start logging your work!
+            No approved entries this week yet.
           </p>
         ) : (
           <div className="space-y-3">
             {weekEntries.map((entry) => (
-              <div 
-                key={entry._id} 
+              <div
+                key={entry._id}
                 className="flex flex-col sm:flex-row sm:items-center sm:justify-between p-4 rounded-xl hover:shadow-md transition-all duration-200 gap-3"
                 style={{ backgroundColor: 'var(--bg-tertiary)' }}
               >
                 <div className="flex-1">
-                  <p 
-                    className="font-semibold flex items-center gap-2" 
-                    style={{ color: 'var(--text-primary)' }}
-                  >
+                  <p className="font-semibold flex items-center gap-2" style={{ color: 'var(--text-primary)' }}>
                     <Calendar className="w-4 h-4" />
-                    {new Date(entry.date).toLocaleDateString('en-US', { 
-                      weekday: 'short', 
-                      month: 'short', 
-                      day: 'numeric' 
+                    {new Date(entry.date).toLocaleDateString('en-US', {
+                      weekday: 'short', month: 'short', day: 'numeric',
                     })}
                   </p>
-                  <p 
-                    className="text-sm mt-1" 
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
+                  <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
                     {entry.notes || 'No notes'}
                   </p>
                 </div>
                 <div className="flex items-center gap-4">
-                  <div className="text-right">
-                    <p 
-                      className="text-sm font-medium" 
-                      style={{ color: 'var(--text-secondary)' }}
-                    >
-                      {formatTime(entry.time)} • {formatPercentage(entry.quality)}
-                    </p>
-                  </div>
+                  <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+                    {formatTime(entry.time)} • {formatPercentage(entry.quality)}
+                  </p>
                   {entry.adminApproved && (
                     <Badge variant="success" className="whitespace-nowrap">
                       <CheckCircle className="w-3 h-3 mr-1" />

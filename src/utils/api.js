@@ -91,7 +91,7 @@ export const superadminAPI = {
   updateBenchmark: (id, data) => api.put(`/dashboard/superadmin/benchmark/${id}`, data),
   addBonus: (id, data) => api.put(`/dashboard/superadmin/bonus/${id}`, data),
   resetBonus: (id) => api.put(`/dashboard/superadmin/bonus/${id}/reset`),
-  getStats: () => api.get('/dashboard/yysuperadmin/stats'),
+  getStats: () => api.get('/dashboard/superadmin/stats'),
 };
 
 export default api;

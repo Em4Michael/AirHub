@@ -9,7 +9,10 @@ import { Input } from '@/components/ui/Input';
 import { useAuth } from '@/context/AuthContext';
 import { userApi } from '@/lib/api/user.api';
 import { Profile } from '@/types';
-import { Briefcase, MapPin, Mail, User, Calendar, CreditCard, Building2, Globe, Camera, Trash2, Upload } from 'lucide-react';
+import {
+  Briefcase, MapPin, Mail, User, Calendar, CreditCard,
+  Building2, Camera, Trash2, Upload, Phone, Edit2, Check, X,
+} from 'lucide-react';
 
 export default function UserProfilesPage() {
   const { user, refreshUser } = useAuth();
@@ -17,18 +20,21 @@ export default function UserProfilesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // Bank details state
   const [editingBank, setEditingBank] = useState(false);
   const [savingBank, setSavingBank] = useState(false);
+  const [bankData, setBankData] = useState({ bankName: '', accountName: '', accountNumber: '' });
+
+  // Phone state
+  const [editingPhone, setEditingPhone] = useState(false);
+  const [savingPhone, setSavingPhone] = useState(false);
+  const [phoneInput, setPhoneInput] = useState('');
+
+  // Photo state
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [deletingPhoto, setDeletingPhoto] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  const [bankData, setBankData] = useState({
-    bankName: '',
-    accountName: '',
-    accountNumber: '',
-    routingNumber: '',
-  });
 
   useEffect(() => {
     fetchProfiles();
@@ -37,17 +43,17 @@ export default function UserProfilesPage() {
         bankName: user.bankDetails.bankName || '',
         accountName: user.bankDetails.accountName || '',
         accountNumber: user.bankDetails.accountNumber || '',
-        routingNumber: user.bankDetails.routingNumber || '',
       });
+    }
+    if (user?.phone) {
+      setPhoneInput(user.phone);
     }
   }, [user]);
 
   const fetchProfiles = async () => {
     try {
       const response = await userApi.getAssignedProfiles();
-      if (response.success && response.data) {
-        setProfiles(response.data);
-      }
+      if (response.success && response.data) setProfiles(response.data);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load profiles');
     } finally {
@@ -56,9 +62,7 @@ export default function UserProfilesPage() {
   };
 
   const handleSaveBankDetails = async () => {
-    setSavingBank(true);
-    setError('');
-    setSuccess('');
+    setSavingBank(true); setError(''); setSuccess('');
     try {
       await userApi.updateBankDetails(bankData);
       await refreshUser();
@@ -66,9 +70,25 @@ export default function UserProfilesPage() {
       setSuccess('Bank details updated successfully');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to update bank details');
-    } finally {
-      setSavingBank(false);
-    }
+    } finally { setSavingBank(false); }
+  };
+
+  const handleSavePhone = async () => {
+    setSavingPhone(true); setError(''); setSuccess('');
+    try {
+      // PUT /api/user/profile  (handled by userController.updateProfile)
+      await userApi.updateProfile({ phone: phoneInput });
+      await refreshUser();
+      setEditingPhone(false);
+      setSuccess('Phone number updated successfully');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to update phone number');
+    } finally { setSavingPhone(false); }
+  };
+
+  const handleCancelPhone = () => {
+    setPhoneInput(user?.phone || '');
+    setEditingPhone(false);
   };
 
   const getUserInitials = () => {
@@ -82,21 +102,10 @@ export default function UserProfilesPage() {
   const handlePhotoSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!file.type.startsWith('image/')) { setError('Please select an image file'); return; }
+    if (file.size > 5 * 1024 * 1024) { setError('File size must be less than 5MB'); return; }
 
-    if (!file.type.startsWith('image/')) {
-      setError('Please select an image file');
-      return;
-    }
-
-    if (file.size > 5 * 1024 * 1024) {
-      setError('File size must be less than 5MB');
-      return;
-    }
-
-    setUploadingPhoto(true);
-    setError('');
-    setSuccess('');
-
+    setUploadingPhoto(true); setError(''); setSuccess('');
     try {
       await userApi.uploadProfilePhoto(file);
       await refreshUser();
@@ -105,62 +114,54 @@ export default function UserProfilesPage() {
       setError(err.response?.data?.message || 'Failed to upload photo');
     } finally {
       setUploadingPhoto(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
   const handleDeletePhoto = async () => {
-    if (!confirm('Are you sure you want to delete your profile photo?')) {
-      return;
-    }
-
-    setDeletingPhoto(true);
-    setError('');
-    setSuccess('');
-
+    if (!confirm('Are you sure you want to delete your profile photo?')) return;
+    setDeletingPhoto(true); setError(''); setSuccess('');
     try {
       await userApi.deleteProfilePhoto();
       await refreshUser();
       setSuccess('Profile photo deleted successfully');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to delete photo');
-    } finally {
-      setDeletingPhoto(false);
-    }
+    } finally { setDeletingPhoto(false); }
   };
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <Spinner size="lg" />
-      </div>
-    );
-  }
+  if (loading) return <div className="flex items-center justify-center h-96"><Spinner size="lg" /></div>;
 
-  const hasBankDetails = user?.bankDetails && (
-    user.bankDetails.bankName || 
-    user.bankDetails.accountName || 
-    user.bankDetails.accountNumber
-  );
+  const hasBankDetails =
+    user?.bankDetails &&
+    (user.bankDetails.bankName || user.bankDetails.accountName || user.bankDetails.accountNumber);
 
   return (
     <div className="space-y-6 pb-20 lg:pb-6" style={{ minHeight: '100vh' }}>
       <div>
         <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>My Profile</h1>
-        <p className="mt-1" style={{ color: 'var(--text-secondary)' }}>Manage your personal information and assigned profiles</p>
+        <p className="mt-1" style={{ color: 'var(--text-secondary)' }}>
+          Manage your personal information and assigned profiles
+        </p>
       </div>
 
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       {success && <Alert type="success" message={success} onClose={() => setSuccess('')} />}
 
-      {/* Personal Information Card */}
       {user && (
-        <div className="card overflow-hidden" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-          <div className="p-6 border-b" style={{ background: `linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 70%, #000) 100%)` }}>
+        <div
+          className="card overflow-hidden"
+          style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+        >
+          {/* Header banner */}
+          <div
+            className="p-6 border-b"
+            style={{
+              background:
+                'linear-gradient(135deg, var(--accent-color) 0%, color-mix(in srgb, var(--accent-color) 70%, #000) 100%)',
+            }}
+          >
             <div className="flex items-center gap-4">
-              {/* Profile Photo with Upload */}
               <div className="relative">
                 <div className="w-20 h-20 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center shadow-lg overflow-hidden">
                   {user.profilePhoto ? (
@@ -169,8 +170,6 @@ export default function UserProfilesPage() {
                     <span className="text-3xl font-bold text-white">{getUserInitials()}</span>
                   )}
                 </div>
-                
-                {/* Camera overlay */}
                 <button
                   onClick={() => fileInputRef.current?.click()}
                   disabled={uploadingPhoto}
@@ -182,14 +181,7 @@ export default function UserProfilesPage() {
                     <Camera className="w-6 h-6 text-white" />
                   )}
                 </button>
-                
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handlePhotoSelect}
-                  className="hidden"
-                />
+                <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoSelect} className="hidden" />
               </div>
 
               <div className="flex-1">
@@ -199,8 +191,6 @@ export default function UserProfilesPage() {
                   <Badge variant={user.role === 'superadmin' ? 'danger' : user.role === 'admin' ? 'warning' : 'primary'}>
                     {user.role.toUpperCase()}
                   </Badge>
-                  
-                  {/* Photo action buttons */}
                   <div className="flex gap-2">
                     <button
                       onClick={() => fileInputRef.current?.click()}
@@ -210,15 +200,13 @@ export default function UserProfilesPage() {
                       <Upload className="w-3 h-3" />
                       {user.profilePhoto ? 'Change' : 'Upload'}
                     </button>
-                    
                     {user.profilePhoto && (
                       <button
                         onClick={handleDeletePhoto}
                         disabled={deletingPhoto}
                         className="px-3 py-1 rounded-lg text-xs font-medium bg-red-500/20 hover:bg-red-500/30 text-white transition-colors disabled:opacity-50 flex items-center gap-1"
                       >
-                        <Trash2 className="w-3 h-3" />
-                        Delete
+                        <Trash2 className="w-3 h-3" />Delete
                       </button>
                     )}
                   </div>
@@ -227,9 +215,13 @@ export default function UserProfilesPage() {
             </div>
           </div>
 
+          {/* Personal info grid */}
           <div className="p-6">
-            <h3 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>Personal Information</h3>
+            <h3 className="text-lg font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
+              Personal Information
+            </h3>
             <div className="grid md:grid-cols-2 gap-4">
+              {/* Name */}
               <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                 <User className="w-5 h-5 mt-0.5" style={{ color: 'var(--accent-color)' }} />
                 <div>
@@ -237,6 +229,8 @@ export default function UserProfilesPage() {
                   <p className="font-medium" style={{ color: 'var(--text-primary)' }}>{user.name}</p>
                 </div>
               </div>
+
+              {/* Email */}
               <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                 <Mail className="w-5 h-5 mt-0.5" style={{ color: 'var(--accent-color)' }} />
                 <div>
@@ -244,25 +238,78 @@ export default function UserProfilesPage() {
                   <p className="font-medium" style={{ color: 'var(--text-primary)' }}>{user.email}</p>
                 </div>
               </div>
+
+              {/* Phone — editable */}
+              <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                <Phone className="w-5 h-5 mt-0.5" style={{ color: 'var(--accent-color)' }} />
+                <div className="flex-1">
+                  <p className="text-xs uppercase font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Phone Number</p>
+                  {editingPhone ? (
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="tel"
+                        value={phoneInput}
+                        onChange={(e) => setPhoneInput(e.target.value)}
+                        placeholder="+234 800 000 0000"
+                        className="input text-sm flex-1"
+                        style={{ padding: '4px 8px' }}
+                        autoFocus
+                      />
+                      <button
+                        onClick={handleSavePhone}
+                        disabled={savingPhone}
+                        className="p-1 rounded text-green-600 hover:bg-green-50 disabled:opacity-50"
+                      >
+                        {savingPhone ? <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin" /> : <Check className="w-4 h-4" />}
+                      </button>
+                      <button onClick={handleCancelPhone} className="p-1 rounded text-red-500 hover:bg-red-50">
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <p className="font-medium" style={{ color: user.phone ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+                        {user.phone || 'Not set'}
+                      </p>
+                      <button
+                        onClick={() => { setPhoneInput(user.phone || ''); setEditingPhone(true); }}
+                        className="p-1 rounded hover:bg-opacity-80 transition-colors"
+                        style={{ color: 'var(--accent-color)' }}
+                        title="Edit phone"
+                      >
+                        <Edit2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Joined */}
               <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                 <Calendar className="w-5 h-5 mt-0.5" style={{ color: 'var(--accent-color)' }} />
                 <div>
                   <p className="text-xs uppercase font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Member Since</p>
                   <p className="font-medium" style={{ color: 'var(--text-primary)' }}>
-                    {user.createdAt ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'N/A'}
+                    {user.createdAt
+                      ? new Date(user.createdAt).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })
+                      : 'N/A'}
                   </p>
                 </div>
               </div>
+
+              {/* Status */}
               <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                 <Briefcase className="w-5 h-5 mt-0.5" style={{ color: 'var(--accent-color)' }} />
                 <div>
                   <p className="text-xs uppercase font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Account Status</p>
-                  <Badge variant={user.isApproved ? 'success' : 'warning'}>{user.isApproved ? 'Approved' : 'Pending Approval'}</Badge>
+                  <Badge variant={user.isApproved ? 'success' : 'warning'}>
+                    {user.isApproved ? 'Approved' : 'Pending Approval'}
+                  </Badge>
                 </div>
               </div>
             </div>
 
-            {/* Bank Details Section */}
+            {/* Banking section */}
             <div className="mt-6 pt-6 border-t" style={{ borderColor: 'var(--border-color)' }}>
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>Banking Information</h3>
@@ -277,14 +324,32 @@ export default function UserProfilesPage() {
               {editingBank ? (
                 <div className="space-y-4">
                   <div className="grid md:grid-cols-2 gap-4">
-                    <Input label="Bank Name" type="text" value={bankData.bankName} onChange={(e) => setBankData({ ...bankData, bankName: e.target.value })} placeholder="Enter bank name" leftIcon={<Building2 className="w-5 h-5" />} />
-                    <Input label="Account Name" type="text" value={bankData.accountName} onChange={(e) => setBankData({ ...bankData, accountName: e.target.value })} placeholder="Account holder name" leftIcon={<User className="w-5 h-5" />} />
-                    <Input label="Account Number" type="text" value={bankData.accountNumber} onChange={(e) => setBankData({ ...bankData, accountNumber: e.target.value })} placeholder="Account number" leftIcon={<CreditCard className="w-5 h-5" />} />
-                    <Input label="Routing Number (Optional)" type="text" value={bankData.routingNumber} onChange={(e) => setBankData({ ...bankData, routingNumber: e.target.value })} placeholder="Routing number" leftIcon={<Globe className="w-5 h-5" />} />
+                    <Input label="Bank Name" type="text" value={bankData.bankName}
+                      onChange={(e) => setBankData({ ...bankData, bankName: e.target.value })}
+                      placeholder="Enter bank name" leftIcon={<Building2 className="w-5 h-5" />} />
+                    <Input label="Account Name" type="text" value={bankData.accountName}
+                      onChange={(e) => setBankData({ ...bankData, accountName: e.target.value })}
+                      placeholder="Account holder name" leftIcon={<User className="w-5 h-5" />} />
+                    <Input label="Account Number" type="text" value={bankData.accountNumber}
+                      onChange={(e) => setBankData({ ...bankData, accountNumber: e.target.value })}
+                      placeholder="Account number" leftIcon={<CreditCard className="w-5 h-5" />} />
                   </div>
                   <div className="flex gap-3">
-                    <Button onClick={handleSaveBankDetails} isLoading={savingBank} loadingText="Saving...">Save Bank Details</Button>
-                    <Button variant="outline" onClick={() => { setEditingBank(false); if (user.bankDetails) setBankData({ bankName: user.bankDetails.bankName || '', accountName: user.bankDetails.accountName || '', accountNumber: user.bankDetails.accountNumber || '', routingNumber: user.bankDetails.routingNumber || '' }); }}>Cancel</Button>
+                    <Button onClick={handleSaveBankDetails} isLoading={savingBank} loadingText="Saving...">
+                      Save Bank Details
+                    </Button>
+                    <Button variant="outline" onClick={() => {
+                      setEditingBank(false);
+                      if (user.bankDetails) {
+                        setBankData({
+                          bankName: user.bankDetails.bankName || '',
+                          accountName: user.bankDetails.accountName || '',
+                          accountNumber: user.bankDetails.accountNumber || '',
+                        });
+                      }
+                    }}>
+                      Cancel
+                    </Button>
                   </div>
                 </div>
               ) : hasBankDetails ? (
@@ -312,16 +377,9 @@ export default function UserProfilesPage() {
                       <CreditCard className="w-5 h-5 mt-0.5" style={{ color: 'var(--accent-color)' }} />
                       <div>
                         <p className="text-xs uppercase font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Account Number</p>
-                        <p className="font-medium" style={{ color: 'var(--text-primary)' }}>••••••{user.bankDetails.accountNumber.slice(-4)}</p>
-                      </div>
-                    </div>
-                  )}
-                  {user.bankDetails?.routingNumber && (
-                    <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                      <Globe className="w-5 h-5 mt-0.5" style={{ color: 'var(--accent-color)' }} />
-                      <div>
-                        <p className="text-xs uppercase font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Routing Number</p>
-                        <p className="font-medium" style={{ color: 'var(--text-primary)' }}>{user.bankDetails.routingNumber}</p>
+                        <p className="font-medium" style={{ color: 'var(--text-primary)' }}>
+                          ••••••{user.bankDetails.accountNumber.slice(-4)}
+                        </p>
                       </div>
                     </div>
                   )}
@@ -330,7 +388,9 @@ export default function UserProfilesPage() {
                 <div className="text-center py-8 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                   <CreditCard className="w-12 h-12 mx-auto mb-3" style={{ color: 'var(--text-muted)' }} />
                   <p style={{ color: 'var(--text-muted)' }}>No bank details added yet</p>
-                  <Button variant="outline" size="sm" className="mt-4" onClick={() => setEditingBank(true)}>Add Bank Details</Button>
+                  <Button variant="outline" size="sm" className="mt-4" onClick={() => setEditingBank(true)}>
+                    Add Bank Details
+                  </Button>
                 </div>
               )}
             </div>
@@ -340,7 +400,9 @@ export default function UserProfilesPage() {
 
       {/* Assigned Profiles */}
       <div>
-        <h2 className="text-2xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>Assigned Profiles ({profiles.length})</h2>
+        <h2 className="text-2xl font-bold mb-4" style={{ color: 'var(--text-primary)' }}>
+          Assigned Profiles ({profiles.length})
+        </h2>
         {profiles.length === 0 ? (
           <div className="card p-12 text-center" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
             <Briefcase className="w-12 h-12 mx-auto mb-4" style={{ color: 'var(--text-muted)' }} />
@@ -349,11 +411,12 @@ export default function UserProfilesPage() {
         ) : (
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
             {profiles.map((profile) => (
-              <div key={profile._id} className="card hover:shadow-lg transition-all group" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+              <div key={profile._id} className="card hover:shadow-lg transition-all group"
+                style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
                 <div className="p-5 border-b" style={{ borderColor: 'var(--border-color)' }}>
                   <div className="flex items-start justify-between">
                     <div className="flex-1">
-                      <h3 className="text-lg font-bold group-hover:text-opacity-80 transition-colors" style={{ color: 'var(--text-primary)' }}>{profile.fullName}</h3>
+                      <h3 className="text-lg font-bold" style={{ color: 'var(--text-primary)' }}>{profile.fullName}</h3>
                       <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>{profile.accountBearerName}</p>
                     </div>
                     <Badge variant="primary">Active</Badge>

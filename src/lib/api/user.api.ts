@@ -1,9 +1,21 @@
 import { apiClient } from './client';
-import { ApiResponse, BankDetails, Entry, Profile, DashboardData, PaginatedResponse, User } from '@/types';
+import { ApiResponse, BankDetails, Entry, Profile, PaginatedResponse, User, DashboardApiResponse } from '@/types';
 
 export const userApi = {
   updateBankDetails: async (data: BankDetails): Promise<ApiResponse<User>> => {
     const response = await apiClient.put('/user/bank', data);
+    return response.data;
+  },
+
+  /**
+   * FIX (Issue: Failed to update phone number)
+   * This method was completely missing from user.api.ts.
+   * The profile page calls userApi.updateProfile({ phone }) — without this
+   * method the call threw "userApi.updateProfile is not a function".
+   * Route: PUT /user/profile  →  userController.updateProfile
+   */
+  updateProfile: async (data: { name?: string; phone?: string }): Promise<ApiResponse<User>> => {
+    const response = await apiClient.put('/user/profile', data);
     return response.data;
   },
 
@@ -41,52 +53,46 @@ export const userApi = {
     return response.data;
   },
 
-  getDashboard: async (): Promise<ApiResponse<DashboardData>> => {
-    const response = await apiClient.get('/user/dashboard');
+  getDashboard: async (params?: {
+    startDate?: string;
+    endDate?: string;
+  }): Promise<ApiResponse<DashboardApiResponse>> => {
+    const response = await apiClient.get('/user/dashboard', { params });
     return response.data;
   },
 
-  getWeeklySummary: async (): Promise<ApiResponse<any>> => {
-    const response = await apiClient.get('/user/weekly-summary');
+  getWeeklySummary: async (params?: {
+    weekStart?: string;
+  }): Promise<ApiResponse<any>> => {
+    const response = await apiClient.get('/user/weekly-summary', { params });
     return response.data;
   },
 
-  /**
-   * Upload profile photo using FormData (proper file upload)
-   * @param file - Image file to upload
-   * @returns Promise with the uploaded user data including profilePhoto
-   */
-  uploadProfilePhoto: async (file: File): Promise<ApiResponse<User>> => {
-    // Validate file type
+  getMyPayments: async (
+    page: number = 1,
+    limit: number = 100
+  ): Promise<ApiResponse<any[]>> => {
+    const response = await apiClient.get('/user/payments', { params: { page, limit } });
+    return response.data;
+  },
+
+  uploadProfilePhoto: async (file: File): Promise<ApiResponse<{ profilePhoto: string }>> => {
     if (!file.type.startsWith('image/')) {
       throw new Error('Please select an image file');
     }
-
-    // Validate file size (5MB)
     if (file.size > 5 * 1024 * 1024) {
       throw new Error('File size must be less than 5MB');
     }
-
-    // Create FormData
     const formData = new FormData();
     formData.append('photo', file);
-
-    // Send to backend using multipart/form-data
-    const response = await apiClient.post('/user/upload-photo', formData, {
-      headers: {
-        'Content-Type': 'multipart/form-data',
-      },
+    const response = await apiClient.put('/user/profile-photo', formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
     });
-
     return response.data;
   },
 
-  /**
-   * Delete profile photo
-   * @returns Promise with updated user data
-   */
-  deleteProfilePhoto: async (): Promise<ApiResponse<User>> => {
-    const response = await apiClient.delete('/user/photo');
+  deleteProfilePhoto: async (): Promise<ApiResponse<{ profilePhoto: null }>> => {
+    const response = await apiClient.delete('/user/profile-photo');
     return response.data;
   },
 };

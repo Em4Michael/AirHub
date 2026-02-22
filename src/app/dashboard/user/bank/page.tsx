@@ -13,11 +13,12 @@ export default function BankDetailsPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+
+  // routingNumber intentionally omitted — removed per spec
   const [formData, setFormData] = useState<BankDetails>({
     bankName: '',
     accountNumber: '',
     accountName: '',
-    routingNumber: '',
   });
 
   useEffect(() => {
@@ -28,9 +29,11 @@ export default function BankDetailsPage() {
     try {
       const response = await authApi.getMe();
       if (response.success && response.data?.bankDetails) {
-        setFormData(response.data.bankDetails);
+        const { bankName = '', accountNumber = '', accountName = '' } =
+          response.data.bankDetails;
+        setFormData({ bankName, accountNumber, accountName });
       }
-    } catch (err) {
+    } catch {
       console.error('Failed to load bank details');
     }
   };
@@ -58,8 +61,10 @@ export default function BankDetailsPage() {
   };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6" style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100vh', padding: '2rem 1rem' }}>
-
+    <div
+      className="max-w-2xl mx-auto space-y-6"
+      style={{ backgroundColor: 'var(--bg-primary)', minHeight: '100vh', padding: '2rem 1rem' }}
+    >
       <div>
         <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>
           Bank Details
@@ -72,25 +77,22 @@ export default function BankDetailsPage() {
       {error && <Alert type="error" message={error} />}
       {success && <Alert type="success" message={success} />}
 
-      <div 
+      <div
         className="card p-6"
-        style={{ 
-          backgroundColor: 'var(--bg-secondary)',
-          borderColor: 'var(--border-color)'
-        }}
+        style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
       >
         <div className="flex items-center gap-3 mb-6">
-          <div 
+          <div
             className="w-12 h-12 rounded-lg flex items-center justify-center"
-            style={{ backgroundColor: 'var(--accent-color)', opacity: 0.1 }}
+            style={{ backgroundColor: 'var(--accent-color)', opacity: 0.9 }}
           >
-            <CreditCard className="w-6 h-6" style={{ color: 'var(--accent-color)' }} />
+            <CreditCard className="w-6 h-6 text-white" />
           </div>
           <h3 className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
             Payment Information
           </h3>
         </div>
-        
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
             label="Bank Name"
@@ -98,7 +100,7 @@ export default function BankDetailsPage() {
             value={formData.bankName}
             onChange={handleChange}
             required
-            placeholder="e.g., Chase Bank"
+            placeholder="e.g., First Bank"
           />
 
           <Input
@@ -119,13 +121,7 @@ export default function BankDetailsPage() {
             placeholder="John Doe"
           />
 
-          <Input
-            label="Routing Number (Optional)"
-            name="routingNumber"
-            value={formData.routingNumber}
-            onChange={handleChange}
-            placeholder="123456789"
-          />
+          {/* Routing Number field intentionally removed per spec */}
 
           <div className="pt-4">
             <Button type="submit" isLoading={loading} className="btn-primary">
@@ -135,16 +131,13 @@ export default function BankDetailsPage() {
           </div>
         </form>
 
-        {/* Security Notice */}
-        <div 
+        <div
           className="mt-6 p-4 rounded-lg"
-          style={{ 
-            backgroundColor: 'var(--bg-tertiary)',
-            borderLeft: '4px solid var(--accent-color)'
-          }}
+          style={{ backgroundColor: 'var(--bg-tertiary)', borderLeft: '4px solid var(--accent-color)' }}
         >
           <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-            🔒 Your banking information is encrypted and stored securely. We never share your details with third parties.
+            🔒 Your banking information is encrypted and stored securely. We never share your
+            details with third parties.
           </p>
         </div>
       </div>

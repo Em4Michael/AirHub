@@ -2,17 +2,18 @@
 
 import React from 'react';
 import { useTheme } from '@/context/ThemeContext';
+import type { BackgroundMode } from '@/context/ThemeContext';
 
 interface ThemeSwitcherProps {
   className?: string;
 }
 
 export function ThemeSwitcher({ className = '' }: ThemeSwitcherProps) {
-  const { theme, setTheme, mounted } = useTheme();
+  const { config, setBackgroundMode, mounted } = useTheme();
 
-  const themes = [
+  const themes: { name: BackgroundMode; label: string; icon: React.ReactNode }[] = [
     {
-      name: 'light' as const,
+      name: 'light',
       label: 'Light',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -21,20 +22,20 @@ export function ThemeSwitcher({ className = '' }: ThemeSwitcherProps) {
       ),
     },
     {
-      name: 'dark' as const,
-      label: 'Dark',
+      name: 'dim',
+      label: 'Dim',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
         </svg>
       ),
     },
     {
-      name: 'lavender' as const,
-      label: 'Lavender',
+      name: 'dark',
+      label: 'Dark',
       icon: (
         <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
         </svg>
       ),
     },
@@ -58,8 +59,8 @@ export function ThemeSwitcher({ className = '' }: ThemeSwitcherProps) {
       {themes.map((t) => (
         <button
           key={t.name}
-          onClick={() => setTheme(t.name)}
-          className={`theme-switcher-btn ${theme === t.name ? 'active' : ''}`}
+          onClick={() => setBackgroundMode(t.name)}
+          className={`theme-switcher-btn ${config.backgroundMode === t.name ? 'active' : ''}`}
           title={t.label}
         >
           {t.icon}

@@ -17,7 +17,7 @@ export default function CreateProfilePage() {
   const [error, setError] = useState('');
   const [workers, setWorkers] = useState<User[]>([]);
   const [loadingWorkers, setLoadingWorkers] = useState(true);
- 
+
   const [formData, setFormData] = useState({
     email: '',
     fullName: '',
@@ -25,6 +25,7 @@ export default function CreateProfilePage() {
     country: '',
     accountBearerName: '',
     defaultWorker: '',
+    secondWorker: '',   // ← added per spec: up to 2 workers per profile
   });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
@@ -36,28 +37,16 @@ export default function CreateProfilePage() {
     try {
       setLoadingWorkers(true);
       const response = await adminApi.getAllUsers(1, 200);
-      
-      console.log('Full API response:', response);
-      
       if (response.success && response.data) {
-        console.log('Total users:', response.data.length);
-        
-        // Filter only approved users with 'user' role (not admin or superadmin)
         const approvedWorkers = response.data.filter(
-          (user: User) => {
-            console.log('User:', user.name, 'Role:', user.role, 'Status:', user.status, 'isApproved:', user.isApproved);
-            // Check both status and isApproved fields
-            return user.role === 'user' && (user.isApproved === true || user.status === 'approved');
-          }
+          (user: User) =>
+            user.role === 'user' &&
+            (user.isApproved === true || user.status === 'approved')
         );
-        
-        console.log('Filtered workers:', approvedWorkers.length);
         setWorkers(approvedWorkers);
       }
-    } catch (err: unknown) {
-      const error = err as any;
-      console.error('Failed to load workers:', error);
-      setError(error.response?.data?.message || 'Could not load workers for assignment');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Could not load workers for assignment');
     } finally {
       setLoadingWorkers(false);
     }
@@ -65,42 +54,41 @@ export default function CreateProfilePage() {
 
   const validateForm = (): boolean => {
     const errors: Record<string, string> = {};
-    
+
     if (!formData.email.trim()) {
       errors.email = 'Email is required';
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
       errors.email = 'Invalid email format';
     }
-    
-    if (!formData.fullName.trim()) {
-      errors.fullName = 'Full name is required';
-    }
-    
-    if (!formData.state.trim()) {
-      errors.state = 'State is required';
-    }
-    
-    if (!formData.country.trim()) {
-      errors.country = 'Country is required';
-    }
-    
-    if (!formData.accountBearerName.trim()) {
+    if (!formData.fullName.trim()) errors.fullName = 'Full name is required';
+    if (!formData.state.trim()) errors.state = 'State is required';
+    if (!formData.country.trim()) errors.country = 'Country is required';
+    if (!formData.accountBearerName.trim())
       errors.accountBearerName = 'Account bearer name is required';
+
+    // Both workers selected but are the same person
+    if (
+      formData.defaultWorker &&
+      formData.secondWorker &&
+      formData.defaultWorker === formData.secondWorker
+    ) {
+      errors.secondWorker = 'Primary and secondary workers must be different';
     }
-    
+
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
+  const handleChange = (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
+  ) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
-   
     if (fieldErrors[name]) {
-      setFieldErrors(prev => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
+      setFieldErrors((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
       });
     }
     setError('');
@@ -112,42 +100,51 @@ export default function CreateProfilePage() {
 
     setLoading(true);
     setError('');
-    
+
     try {
-      const payload: any = {
+      const payload: Parameters<typeof adminApi.createProfile>[0] = {
         email: formData.email,
         fullName: formData.fullName,
         state: formData.state,
         country: formData.country,
         accountBearerName: formData.accountBearerName,
       };
-      
-      // Only include defaultWorker if a worker is selected
-      if (formData.defaultWorker && formData.defaultWorker !== '') {
-        payload.defaultWorker = formData.defaultWorker;
-      }
+
+      if (formData.defaultWorker) payload.defaultWorker = formData.defaultWorker;
+      if (formData.secondWorker) payload.secondWorker = formData.secondWorker;
 
       const response = await adminApi.createProfile(payload);
-     
+
       if (response.success) {
-        alert('Profile created successfully!');
         router.push('/dashboard/admin/profiles');
       }
-    } catch (err: unknown) {
-      const error = err as any;
-      console.error('Create profile error:', error);
-      setError(error.response?.data?.message || error.message || 'Failed to create profile');
+    } catch (err: any) {
+      setError(
+        err.response?.data?.message || err.message || 'Failed to create profile'
+      );
     } finally {
       setLoading(false);
     }
   };
+
+  // Workers available for the second slot — exclude whoever is already chosen as primary
+  const secondWorkerOptions = workers.filter(
+    (w) => w._id !== formData.defaultWorker
+  );
+  // Workers available for the primary slot — exclude whoever is already chosen as secondary
+  const firstWorkerOptions = workers.filter(
+    (w) => w._id !== formData.secondWorker
+  );
 
   return (
     <div className="max-w-2xl mx-auto space-y-6">
       {/* Header */}
       <div className="flex items-center gap-4">
         <Link href="/dashboard/admin/profiles">
-          <button className="p-2 rounded-lg transition-colors hover:bg-opacity-80" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+          <button
+            className="p-2 rounded-lg transition-colors hover:bg-opacity-80"
+            style={{ backgroundColor: 'var(--bg-tertiary)' }}
+          >
             <ArrowLeft className="w-5 h-5" style={{ color: 'var(--text-primary)' }} />
           </button>
         </Link>
@@ -174,7 +171,10 @@ export default function CreateProfilePage() {
           <form onSubmit={handleSubmit} className="space-y-5">
             {/* Full Name */}
             <div>
-              <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+              <label
+                className="block text-sm font-semibold mb-2"
+                style={{ color: 'var(--text-primary)' }}
+              >
                 Full Name / Company Name
               </label>
               <div className="relative">
@@ -197,7 +197,10 @@ export default function CreateProfilePage() {
 
             {/* Email */}
             <div>
-              <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+              <label
+                className="block text-sm font-semibold mb-2"
+                style={{ color: 'var(--text-primary)' }}
+              >
                 Email Address
               </label>
               <div className="relative">
@@ -221,7 +224,10 @@ export default function CreateProfilePage() {
             {/* Location */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+                <label
+                  className="block text-sm font-semibold mb-2"
+                  style={{ color: 'var(--text-primary)' }}
+                >
                   State
                 </label>
                 <div className="relative">
@@ -242,7 +248,10 @@ export default function CreateProfilePage() {
                 )}
               </div>
               <div>
-                <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+                <label
+                  className="block text-sm font-semibold mb-2"
+                  style={{ color: 'var(--text-primary)' }}
+                >
                   Country
                 </label>
                 <input
@@ -261,7 +270,10 @@ export default function CreateProfilePage() {
 
             {/* Account Bearer Name */}
             <div>
-              <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
+              <label
+                className="block text-sm font-semibold mb-2"
+                style={{ color: 'var(--text-primary)' }}
+              >
                 Account Bearer Name
               </label>
               <div className="relative">
@@ -282,45 +294,97 @@ export default function CreateProfilePage() {
               )}
             </div>
 
-            {/* Assign Worker */}
-            <div>
-              <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
-                Assign to Worker (Optional)
-              </label>
-              <div className="relative">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Users className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
-                </div>
-                {loadingWorkers ? (
-                  <div className="input pl-10 flex items-center">
-                    <Spinner size="sm" />
-                    <span className="ml-2" style={{ color: 'var(--text-muted)' }}>Loading workers...</span>
+            {/* Worker Assignment — supports up to 2 concurrent workers */}
+            <div className="space-y-4">
+              <p
+                className="text-sm font-semibold"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                Assign Workers (Optional — up to 2)
+              </p>
+
+              {/* Primary Worker */}
+              <div>
+                <label
+                  className="block text-sm font-medium mb-2"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  Primary Worker
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Users className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
                   </div>
-                ) : (
-                  <select
-                    name="defaultWorker"
-                    value={formData.defaultWorker}
-                    onChange={handleChange}
-                    className="input pl-10"
-                    style={{ paddingLeft: '2.5rem' }}
-                  >
-                    <option value="">No worker assigned</option>
-                    {workers.map((worker) => (
-                      <option key={worker._id} value={worker._id}>
-                        {worker.name} ({worker.email})
-                      </option>
-                    ))}
-                  </select>
+                  {loadingWorkers ? (
+                    <div className="input pl-10 flex items-center">
+                      <Spinner size="sm" />
+                      <span className="ml-2" style={{ color: 'var(--text-muted)' }}>
+                        Loading workers…
+                      </span>
+                    </div>
+                  ) : (
+                    <select
+                      name="defaultWorker"
+                      value={formData.defaultWorker}
+                      onChange={handleChange}
+                      className="input pl-10"
+                    >
+                      <option value="">No primary worker assigned</option>
+                      {firstWorkerOptions.map((worker) => (
+                        <option key={worker._id} value={worker._id}>
+                          {worker.name} ({worker.email})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              </div>
+
+              {/* Secondary Worker */}
+              <div>
+                <label
+                  className="block text-sm font-medium mb-2"
+                  style={{ color: 'var(--text-secondary)' }}
+                >
+                  Secondary Worker
+                </label>
+                <div className="relative">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Users className="w-5 h-5" style={{ color: 'var(--text-muted)' }} />
+                  </div>
+                  {loadingWorkers ? (
+                    <div className="input pl-10 flex items-center">
+                      <Spinner size="sm" />
+                    </div>
+                  ) : (
+                    <select
+                      name="secondWorker"
+                      value={formData.secondWorker}
+                      onChange={handleChange}
+                      className={`input pl-10 ${fieldErrors.secondWorker ? 'input-error' : ''}`}
+                    >
+                      <option value="">No secondary worker assigned</option>
+                      {secondWorkerOptions.map((worker) => (
+                        <option key={worker._id} value={worker._id}>
+                          {worker.name} ({worker.email})
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+                {fieldErrors.secondWorker && (
+                  <p className="error-text">{fieldErrors.secondWorker}</p>
                 )}
               </div>
-              <p className="helper-text mt-1">
+
+              <p className="helper-text">
                 {workers.length === 0 && !loadingWorkers
                   ? 'No workers available. Only approved users with "user" role can be assigned.'
-                  : 'You can assign or change the worker later if needed'}
+                  : 'Both workers can submit entries independently. You can change assignments later.'}
               </p>
             </div>
 
-            {/* Submit Buttons */}
+            {/* Submit */}
             <div className="flex gap-3 pt-6">
               <Button type="submit" isLoading={loading} className="flex-1">
                 Create Profile

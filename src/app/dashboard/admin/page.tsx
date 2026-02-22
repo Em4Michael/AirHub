@@ -217,7 +217,7 @@ export default function AdminDashboard() {
               </div>
               <div>
                 <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
-                  Paid Earnings (This Week)
+                  Earnings (This Week)
                 </p>
                 <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
                   {formatCurrency(stats.weeklyEarnings)}
@@ -235,7 +235,7 @@ export default function AdminDashboard() {
               </div>
               <div>
                 <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
-                  Paid Lifetime Earnings
+                  Lifetime Earnings
                 </p>
                 <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
                   {formatCurrency(stats.lifetimeEarnings)}

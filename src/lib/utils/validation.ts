@@ -25,19 +25,22 @@ export const entrySchema = z.object({
   notes: z.string().optional(),
 });
 
+/**
+ * routingNumber intentionally removed per spec.
+ */
 export const bankDetailsSchema = z.object({
   bankName: z.string().min(2, 'Bank name is required'),
   accountNumber: z.string().min(5, 'Account number is required'),
   accountName: z.string().min(2, 'Account name is required'),
-  routingNumber: z.string().optional(),
 });
 
 export const profileSchema = z.object({
   email: emailSchema,
-  password: passwordSchema,
+  password: passwordSchema.optional(),
   fullName: z.string().min(2, 'Full name is required'),
   state: z.string().min(2, 'State is required'),
   country: z.string().min(2, 'Country is required'),
   accountBearerName: z.string().min(2, 'Account bearer name is required'),
   defaultWorker: z.string().optional(),
+  secondWorker: z.string().optional(),
 });

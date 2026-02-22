@@ -10,11 +10,13 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Alert } from '@/components/ui/Alert';
 import { Modal } from '@/components/ui/Modal';
 import { adminApi } from '@/lib/api/admin.api';
+import { superadminApi } from '@/lib/api/superadmin.api';
 import { formatDate, formatTime, formatPercentage, formatCurrency } from '@/lib/utils/format';
 import {
   ArrowLeft, Clock, Award, DollarSign, CreditCard,
   Mail, CheckCircle, AlertCircle, TrendingUp, Wallet,
-  Check, FileText, XCircle, AlertTriangle, Star, Gift, Phone, Calendar,
+  Check, FileText, XCircle, AlertTriangle,
+  ArrowUp, ArrowDown, Shield, ShieldOff, Trash2, Star, Gift, Phone, Calendar,
 } from 'lucide-react';
 import { BankDetails, WeeklyPayment } from '@/types';
 import { ResponsiveContainer, BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip } from 'recharts';
@@ -29,7 +31,6 @@ interface UserStats {
     phone?: string | null;
     [key: string]: any;
   };
-  // Daily entries from the dashboard endpoint (approved only)
   dailyData?: Array<{
     _id?: string;
     date: string;
@@ -43,7 +44,7 @@ interface UserStats {
   }>;
 }
 
-export default function UserDetailsPage() {
+export default function SuperadminUserDetailsPage() {
   const params = useParams();
   const userId = params?.id as string;
 
@@ -54,6 +55,9 @@ export default function UserDetailsPage() {
   const [success,        setSuccess]        = useState('');
   const [markingPaid,    setMarkingPaid]    = useState<string | null>(null);
   const [markingBonus,   setMarkingBonus]   = useState(false);
+  const [actionLoading,  setActionLoading]  = useState(false);
+  const [deleteConfirm,  setDeleteConfirm]  = useState(false);
+  const [deleting,       setDeleting]       = useState(false);
   const [denyTarget,     setDenyTarget]     = useState<WeeklyPayment | null>(null);
   const [denyReason,     setDenyReason]     = useState('');
   const [denying,        setDenying]        = useState(false);
@@ -117,22 +121,20 @@ export default function UserDetailsPage() {
         );
         setSuccess('Payment marked as paid');
         setTimeout(fetchUserDetails, 1000);
-      } else throw new Error(res.message || 'Failed');
+      }
     } catch (err: any) {
-      setError(err.response?.data?.message || err.message || 'Failed to mark payment as paid');
+      setError(err.response?.data?.message || 'Failed to mark payment');
     } finally { setMarkingPaid(null); }
   };
 
-  // Calls POST /api/admin/users/:id/mark-bonus-paid
   const handleMarkBonusPaid = async () => {
     setMarkingBonus(true); setError(''); setSuccess('');
     try {
       const res = await (adminApi as any).markBonusPaid(userId);
       if (res?.success) {
-        // Case B: pending=true means bonus is queued, stays on user
         if (res.pending) {
+          // Case B: all weeks paid — bonus queued, stays on user, no DB change
           setSuccess(res.message);
-          // Don't refetch — nothing changed in payments, bonus stays queued
         } else {
           setSuccess(res.message || 'Bonus paid successfully');
           await fetchUserDetails();
@@ -145,7 +147,7 @@ export default function UserDetailsPage() {
 
   const handleDenyPayment = async () => {
     if (!denyTarget) return;
-    setDenying(true); setError(''); setSuccess('');
+    setDenying(true);
     try {
       const res = await adminApi.denyPayment(denyTarget._id, denyReason);
       if (res.success) {
@@ -154,11 +156,28 @@ export default function UserDetailsPage() {
         );
         setDenyTarget(null); setDenyReason('');
         setSuccess('Payment denied');
-        setTimeout(fetchWeeklyPayments, 1000);
-      } else throw new Error(res.message || 'Failed');
+      }
     } catch (err: any) {
-      setError(err.response?.data?.message || err.message || 'Failed to deny payment');
+      setError(err.response?.data?.message || 'Failed to deny payment');
     } finally { setDenying(false); }
+  };
+
+  const doAction = async (action: () => Promise<any>, msg: string) => {
+    setActionLoading(true); setError(''); setSuccess('');
+    try { await action(); setSuccess(msg); fetchUserDetails(); }
+    catch (err: any) { setError(err.response?.data?.message || 'Action failed'); }
+    finally { setActionLoading(false); }
+  };
+
+  const handleDelete = async () => {
+    setDeleting(true);
+    try {
+      await superadminApi.deleteUser(userId);
+      window.location.href = '/dashboard/superadmin/users';
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to delete user');
+      setDeleting(false);
+    }
   };
 
   const getUserInitials = (name: string) => {
@@ -167,17 +186,27 @@ export default function UserDetailsPage() {
     return parts.length >= 2 ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase() : name[0].toUpperCase();
   };
 
+  const getStatusBadge  = (s?: string) => s === 'approved' ? 'success' : s === 'revoked' ? 'danger' : s === 'pending' ? 'warning' : 'gray';
+  const getRoleBadge    = (r: string)  => r === 'superadmin' ? 'danger' : r === 'admin' ? 'warning' : 'primary';
+  const getPaymentBadge = (p: WeeklyPayment) => {
+    if (p.paid || p.status === 'paid')    return { variant: 'success' as const, label: 'Paid',     Icon: CheckCircle,  iconColor: 'text-green-600',  bgColor: 'bg-green-100' };
+    if (p.status === 'denied')            return { variant: 'danger'  as const, label: 'Denied',   Icon: XCircle,      iconColor: 'text-red-600',    bgColor: 'bg-red-100'   };
+    if (p.status === 'approved')          return { variant: 'info'    as const, label: 'Approved', Icon: AlertCircle,  iconColor: 'text-blue-600',   bgColor: 'bg-blue-100'  };
+    return                                       { variant: 'warning' as const, label: 'Pending',  Icon: AlertCircle,  iconColor: 'text-orange-600', bgColor: 'bg-orange-100'};
+  };
+
   if (loading) return <div className="flex items-center justify-center h-96"><Spinner size="lg" /></div>;
   if (!userStats) {
     return (
       <div className="max-w-6xl mx-auto space-y-6">
         <Alert type="error" message="User not found" />
-        <Link href="/dashboard/admin/users"><Button variant="outline"><ArrowLeft className="w-4 h-4 mr-2" />Back</Button></Link>
+        <Link href="/dashboard/superadmin/users"><Button variant="outline"><ArrowLeft className="w-4 h-4 mr-2" />Back</Button></Link>
       </div>
     );
   }
 
   const { user } = userStats;
+  const isSuperadminUser = user.role === 'superadmin';
 
   const totals = weeklyPayments.reduce(
     (acc, p) => ({
@@ -194,20 +223,9 @@ export default function UserDetailsPage() {
     .filter((p) => !p.paid && p.status !== 'paid' && p.status !== 'denied')
     .reduce((sum, p) => sum + (Number(p.totalEarnings) || 0), 0);
 
-  const hasBankDetails = user.bankDetails &&
-    (user.bankDetails.bankName || user.bankDetails.accountName || user.bankDetails.accountNumber);
-  const hasBonus = (user.extraBonus ?? 0) > 0;
+  const hasBonus       = (user.extraBonus ?? 0) > 0;
+  const hasBankDetails = user.bankDetails && (user.bankDetails.bankName || user.bankDetails.accountName || user.bankDetails.accountNumber);
 
-  const getStatusColor  = (s?: string) => s === 'approved' ? 'success' : s === 'revoked' ? 'danger' : s === 'pending' ? 'warning' : 'gray';
-  const getRoleColor    = (r: string)  => r === 'superadmin' ? 'danger' : r === 'admin' ? 'warning' : 'primary';
-  const getPaymentBadge = (p: WeeklyPayment) => {
-    if (p.paid || p.status === 'paid')    return { variant: 'success' as const, label: 'Paid',     Icon: CheckCircle,  iconColor: 'text-green-600',  bgColor: 'bg-green-100' };
-    if (p.status === 'denied')            return { variant: 'danger'  as const, label: 'Denied',   Icon: XCircle,      iconColor: 'text-red-600',    bgColor: 'bg-red-100'   };
-    if (p.status === 'approved')          return { variant: 'info'    as const, label: 'Approved', Icon: AlertCircle,  iconColor: 'text-blue-600',   bgColor: 'bg-blue-100'  };
-    return                                       { variant: 'warning' as const, label: 'Pending',  Icon: AlertCircle,  iconColor: 'text-orange-600', bgColor: 'bg-orange-100'};
-  };
-
-  // Synthetic bonus row — shown when there's a pending bonus not yet merged into any payment
   const pendingBonusRow: WeeklyPayment | null =
     hasBonus && !weeklyPayments.some((p) => !p.paid && Number(p.extraBonus) > 0 && p.paymentType === 'bonus')
       ? {
@@ -223,8 +241,7 @@ export default function UserDetailsPage() {
         }
       : null;
 
-  const allRows = pendingBonusRow ? [pendingBonusRow, ...weeklyPayments] : weeklyPayments;
-
+  const allRows   = pendingBonusRow ? [pendingBonusRow, ...weeklyPayments] : weeklyPayments;
   const chartData = [...weeklyPayments]
     .filter((p) => p.paymentType !== 'bonus')
     .sort((a, b) => new Date(a.weekStart).getTime() - new Date(b.weekStart).getTime())
@@ -236,7 +253,7 @@ export default function UserDetailsPage() {
       bonus:    Number(p.extraBonus) || 0,
     }));
 
-  // Daily entries for the "Recent Entries" table — same approach as UserDashboard
+  // Daily entries for the table — same source as UserDashboard
   const dailyEntries = (userStats.dailyData ?? [])
     .filter((d) => d.adminApproved)
     .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
@@ -245,14 +262,14 @@ export default function UserDetailsPage() {
   return (
     <div className="max-w-6xl mx-auto space-y-6 pb-8">
       <div className="flex items-center gap-4">
-        <Link href="/dashboard/admin/users">
+        <Link href="/dashboard/superadmin/users">
           <button className="p-2 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
             <ArrowLeft className="w-5 h-5" style={{ color: 'var(--text-primary)' }} />
           </button>
         </Link>
-        <div className="flex-1">
+        <div>
           <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>User Details</h1>
-          <p style={{ color: 'var(--text-secondary)' }} className="mt-1">Complete performance and payment information</p>
+          <p style={{ color: 'var(--text-secondary)' }} className="mt-1">Full performance, payment and role management</p>
         </div>
       </div>
 
@@ -262,22 +279,20 @@ export default function UserDetailsPage() {
       {/* User Header */}
       <Card>
         <CardContent className="p-6">
-          <div className="flex items-center gap-4">
-            <div className="w-20 h-20 rounded-xl flex items-center justify-center text-white text-3xl font-bold overflow-hidden shadow-md"
+          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4">
+            <div className="w-20 h-20 rounded-xl flex items-center justify-center text-white text-3xl font-bold overflow-hidden shadow-md flex-shrink-0"
               style={{ backgroundColor: user.profilePhoto ? 'transparent' : 'var(--accent-color)' }}>
               {user.profilePhoto
                 ? <img src={user.profilePhoto} alt={user.name} className="w-full h-full object-cover" />
-                : <span>{getUserInitials(user.name || '?')}</span>}
+                : <span>{getUserInitials(user.name)}</span>}
             </div>
             <div className="flex-1">
-              <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{user.name || '—'}</h2>
+              <h2 className="text-2xl font-bold" style={{ color: 'var(--text-primary)' }}>{user.name}</h2>
               <p className="flex items-center gap-2 mt-1" style={{ color: 'var(--text-secondary)' }}><Mail className="w-4 h-4" />{user.email}</p>
-              {user.phone && (
-                <p className="flex items-center gap-2 mt-1" style={{ color: 'var(--text-secondary)' }}><Phone className="w-4 h-4" />{user.phone}</p>
-              )}
+              {user.phone && <p className="flex items-center gap-2 mt-1" style={{ color: 'var(--text-secondary)' }}><Phone className="w-4 h-4" />{user.phone}</p>}
               <div className="flex flex-wrap gap-2 mt-3">
-                <Badge variant={getRoleColor(user.role)}>{user.role.toUpperCase()}</Badge>
-                <Badge variant={getStatusColor(user.status)}>{user.status || (user.isApproved ? 'APPROVED' : 'PENDING')}</Badge>
+                <Badge variant={getRoleBadge(user.role)}>{user.role.toUpperCase()}</Badge>
+                <Badge variant={getStatusBadge(user.status)}>{user.status || (user.isApproved ? 'APPROVED' : 'PENDING')}</Badge>
                 {hasBonus && <Badge variant="success"><Star className="w-3 h-3 mr-1" />Bonus: {formatCurrency(user.extraBonus!)}</Badge>}
               </div>
             </div>
@@ -289,12 +304,43 @@ export default function UserDetailsPage() {
         </CardContent>
       </Card>
 
+      {/* Superadmin Controls */}
+      {!isSuperadminUser && (
+        <Card>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Shield className="w-5 h-5 text-red-500" />Superadmin Controls</CardTitle></CardHeader>
+          <CardContent>
+            <div className="flex flex-wrap gap-3">
+              {user.role === 'user' && (user.status === 'approved' || user.isApproved) && (
+                <Button variant="outline" isLoading={actionLoading} onClick={() => doAction(() => superadminApi.promoteToAdmin(userId), 'User promoted to admin')}>
+                  <ArrowUp className="w-4 h-4" />Promote to Admin
+                </Button>
+              )}
+              {user.role === 'admin' && (
+                <Button variant="outline" isLoading={actionLoading} onClick={() => doAction(() => superadminApi.demoteToUser(userId), 'Admin demoted to user')}>
+                  <ArrowDown className="w-4 h-4" />Demote to User
+                </Button>
+              )}
+              {(user.status === 'approved' || user.isApproved) && (
+                <Button variant="danger" isLoading={actionLoading} onClick={() => doAction(() => superadminApi.revokeAccess(userId), 'Access revoked')}>
+                  <ShieldOff className="w-4 h-4" />Revoke Access
+                </Button>
+              )}
+              {user.status === 'revoked' && (
+                <Button variant="success" isLoading={actionLoading} onClick={() => doAction(() => superadminApi.restoreAccess(userId), 'Access restored')}>
+                  <Shield className="w-4 h-4" />Restore Access
+                </Button>
+              )}
+              <Button variant="danger" onClick={() => setDeleteConfirm(true)}><Trash2 className="w-4 h-4" />Delete User</Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Bonus Summary */}
       <Card>
         <CardHeader><CardTitle className="flex items-center gap-2"><Star className="w-5 h-5 text-yellow-500" />Bonus Summary</CardTitle></CardHeader>
         <CardContent>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            {/* Pending bonus */}
             <div className={`p-4 rounded-xl ${hasBonus ? 'bg-green-50 border-2 border-green-200' : ''}`}
               style={{ backgroundColor: hasBonus ? undefined : 'var(--bg-tertiary)' }}>
               <div className="flex items-center gap-2 mb-1">
@@ -306,11 +352,8 @@ export default function UserDetailsPage() {
                 {hasBonus ? formatCurrency(user.extraBonus!) : '₦0'}
               </p>
               {hasBonus && user.extraBonusReason && <p className="text-xs mt-1 text-green-700 italic">"{user.extraBonusReason}"</p>}
-              {hasBonus && (
-                <p className="text-xs mt-2 text-green-600">Will auto-merge into next weekly payment</p>
-              )}
+              {hasBonus && <p className="text-xs mt-2 text-green-600">Will auto-merge into next weekly payment</p>}
             </div>
-            {/* Latest week bonus */}
             {(() => {
               const wb = Number(weeklyPayments[0]?.extraBonus) || 0;
               return (
@@ -322,7 +365,6 @@ export default function UserDetailsPage() {
                 </div>
               );
             })()}
-            {/* Lifetime bonuses */}
             <div className={`p-4 rounded-xl ${totals.totalBonus > 0 ? 'bg-purple-50 border-2 border-purple-200' : ''}`}
               style={{ backgroundColor: totals.totalBonus > 0 ? undefined : 'var(--bg-tertiary)' }}>
               <p className="text-xs font-semibold uppercase tracking-wide mb-1" style={{ color: totals.totalBonus > 0 ? '#6b21a8' : 'var(--text-muted)' }}>Lifetime Bonuses</p>
@@ -335,7 +377,7 @@ export default function UserDetailsPage() {
         </CardContent>
       </Card>
 
-      {/* Performance cards */}
+      {/* Performance */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
         {[
           { title: "This Week's Performance", Icon: TrendingUp, color: 'text-blue-500',
@@ -381,16 +423,12 @@ export default function UserDetailsPage() {
         <CardContent>
           {hasBankDetails ? (
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {(['bankName', 'accountName', 'accountNumber'] as const)
-                .filter((k) => (user.bankDetails as any)?.[k])
-                .map((k) => (
-                  <div key={k} className="p-4 rounded-xl" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                    <p className="text-sm mb-1" style={{ color: 'var(--text-muted)' }}>
-                      {k === 'bankName' ? 'Bank Name' : k === 'accountName' ? 'Account Name' : 'Account Number'}
-                    </p>
-                    <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{(user.bankDetails as any)[k]}</p>
-                  </div>
-                ))}
+              {(['bankName', 'accountName', 'accountNumber'] as const).filter((k) => (user.bankDetails as any)?.[k]).map((k) => (
+                <div key={k} className="p-4 rounded-xl" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+                  <p className="text-sm mb-1" style={{ color: 'var(--text-muted)' }}>{k === 'bankName' ? 'Bank Name' : k === 'accountName' ? 'Account Name' : 'Account Number'}</p>
+                  <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{(user.bankDetails as any)[k]}</p>
+                </div>
+              ))}
             </div>
           ) : (
             <div className="p-8 rounded-xl text-center" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
@@ -407,7 +445,7 @@ export default function UserDetailsPage() {
           <CardHeader><CardTitle className="flex items-center gap-2"><TrendingUp className="w-5 h-5 text-blue-500" />Weekly Performance History</CardTitle></CardHeader>
           <CardContent className="space-y-8">
             <div>
-              <p className="text-sm font-semibold mb-3" style={{ color: 'var(--text-secondary)' }}>Hours Worked per Week</p>
+              <p className="text-sm font-semibold mb-3" style={{ color: 'var(--text-secondary)' }}>Hours per Week</p>
               <ResponsiveContainer width="100%" height={200}>
                 <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
@@ -447,7 +485,7 @@ export default function UserDetailsPage() {
         </Card>
       )}
 
-      {/* ── Recent Approved Entries (mirrors UserDashboard display) ─────────── */}
+      {/* ── Recent Approved Entries (mirrors UserDashboard) ────────────────── */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -480,12 +518,12 @@ export default function UserDetailsPage() {
                       )}
                     </div>
                     <div className="flex items-center gap-4 flex-shrink-0">
-                      <div className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-                        <span className="flex items-center gap-1"><Clock className="w-3.5 h-3.5" />{formatTime(t)}</span>
-                      </div>
-                      <div className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-                        <span className="flex items-center gap-1"><Award className="w-3.5 h-3.5" />{formatPercentage(q)}</span>
-                      </div>
+                      <span className="text-sm font-medium flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
+                        <Clock className="w-3.5 h-3.5" />{formatTime(t)}
+                      </span>
+                      <span className="text-sm font-medium flex items-center gap-1" style={{ color: 'var(--text-secondary)' }}>
+                        <Award className="w-3.5 h-3.5" />{formatPercentage(q)}
+                      </span>
                       <Badge variant="success">
                         <CheckCircle className="w-3 h-3 mr-1" />Approved
                       </Badge>
@@ -542,8 +580,8 @@ export default function UserDetailsPage() {
                         </div>
                         {isBonusOnly ? (
                           <p className="text-sm mt-1" style={{ color: 'var(--text-muted)' }}>
-                            {payment.extraBonusReason ? `"${payment.extraBonusReason}"` : ''}
-                            {' '}Will auto-merge into next weekly payment, or merge immediately by paying the next unpaid week.
+                            {payment.extraBonusReason ? `"${payment.extraBonusReason}" · ` : ''}
+                            Will auto-merge into next weekly payment, or merge now if an unpaid week exists.
                           </p>
                         ) : (
                           <>
@@ -556,9 +594,7 @@ export default function UserDetailsPage() {
                               <span className="flex items-center gap-1"><FileText className="w-3 h-3" />{payment.entryCount || 0} entries</span>
                               {payment.paidDate && <><span>•</span><span className="text-green-600">Paid {formatDate(payment.paidDate)}</span></>}
                             </div>
-                            {payBonus > 0 && payment.extraBonusReason && (
-                              <p className="text-xs mt-1 text-green-600 italic">Bonus reason: "{payment.extraBonusReason}"</p>
-                            )}
+                            {payBonus > 0 && payment.extraBonusReason && <p className="text-xs mt-1 text-green-600 italic">Bonus: "{payment.extraBonusReason}"</p>}
                           </>
                         )}
                       </div>
@@ -576,8 +612,7 @@ export default function UserDetailsPage() {
                             </Button>
                           </div>
                         )}
-                        {/* Bonus row: offer to merge immediately into the latest unpaid week */}
-                        {isBonusOnly && canAct && (
+                        {isBonusOnly && (
                           <div className="flex gap-2 mt-2 justify-end">
                             <Button size="sm" onClick={handleMarkBonusPaid} isLoading={markingBonus}>
                               <Check className="w-4 h-4 mr-1" />Merge Now
@@ -604,24 +639,31 @@ export default function UserDetailsPage() {
             <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>Deny this payment?</p>
             {denyTarget && (
               <p className="text-sm mt-1" style={{ color: 'var(--text-secondary)' }}>
-                {denyTarget.paymentType === 'bonus'
-                  ? `Bonus ${formatCurrency(denyTarget.totalEarnings)}`
-                  : `Week ${denyTarget.weekNumber}, ${denyTarget.year} · ${formatCurrency(denyTarget.totalEarnings)}`}
+                Week {denyTarget.weekNumber}, {denyTarget.year} · {formatCurrency(denyTarget.totalEarnings)}
               </p>
             )}
           </div>
-          <div>
-            <label className="block text-sm font-semibold mb-2" style={{ color: 'var(--text-primary)' }}>
-              Reason <span style={{ color: 'var(--text-muted)', fontWeight: 400 }}>(optional)</span>
-            </label>
-            <textarea value={denyReason} onChange={(e) => setDenyReason(e.target.value)}
-              rows={3} className="input resize-none w-full" placeholder="Explain why this payment is being denied…" />
+          <textarea value={denyReason} onChange={(e) => setDenyReason(e.target.value)} rows={3} className="input resize-none w-full" placeholder="Reason (optional)…" />
+          <div className="flex gap-3">
+            <Button variant="danger" onClick={handleDenyPayment} isLoading={denying} className="flex-1"><XCircle className="w-4 h-4" />Deny Payment</Button>
+            <Button variant="outline" onClick={() => setDenyTarget(null)} className="flex-1">Cancel</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Modal */}
+      <Modal isOpen={deleteConfirm} onClose={() => setDeleteConfirm(false)} title="Delete User" size="sm">
+        <div className="space-y-4">
+          <div className="flex items-center justify-center">
+            <div className="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center"><AlertTriangle className="w-8 h-8 text-red-600" /></div>
+          </div>
+          <div className="text-center">
+            <p style={{ color: 'var(--text-primary)' }}>Delete <strong>{user.name}</strong>?</p>
+            <p className="text-sm mt-2" style={{ color: 'var(--text-muted)' }}>This action cannot be undone. All data will be permanently deleted.</p>
           </div>
           <div className="flex gap-3">
-            <Button variant="danger" onClick={handleDenyPayment} isLoading={denying} className="flex-1">
-              <XCircle className="w-4 h-4" />Deny Payment
-            </Button>
-            <Button variant="outline" onClick={() => setDenyTarget(null)} className="flex-1">Cancel</Button>
+            <Button variant="danger" onClick={handleDelete} isLoading={deleting} className="flex-1">Delete</Button>
+            <Button variant="outline" onClick={() => setDeleteConfirm(false)} className="flex-1">Cancel</Button>
           </div>
         </div>
       </Modal>

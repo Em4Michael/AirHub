@@ -10,6 +10,16 @@ import { userApi } from '@/lib/api/user.api';
 import { Profile } from '@/types';
 import { FileText, ArrowLeft } from 'lucide-react';
 
+// Build today's date string from LOCAL components — not toISOString() which
+// converts to UTC first and rolls back one day for UTC+ timezones at midnight.
+const getTodayLocalDateString = () => {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+};
+
 export default function NewEntryPage() {
   const router = useRouter();
   const [profiles, setProfiles] = useState<Profile[]>([]);
@@ -18,7 +28,7 @@ export default function NewEntryPage() {
   const [success, setSuccess] = useState('');
   const [formData, setFormData] = useState({
     profileId: '',
-    date: new Date().toISOString().split('T')[0],
+    date: getTodayLocalDateString(), // ← FIXED: uses local date, not UTC
     time: '',
     quality: '',
     notes: '',
@@ -52,7 +62,7 @@ export default function NewEntryPage() {
     try {
       const response = await userApi.createEntry({
         profileId: formData.profileId,
-        date: formData.date,
+        date: formData.date, // already "YYYY-MM-DD" — safe to send as-is
         time: parseFloat(formData.time),
         quality: parseFloat(formData.quality),
         notes: formData.notes,

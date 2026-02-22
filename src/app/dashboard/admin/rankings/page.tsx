@@ -136,7 +136,7 @@ export default function AdminRankingsPage() {
           Performance Rankings
         </h1>
         <p style={{ color: 'var(--text-secondary)' }} className="mt-1">
-          Top performing workers based on paid earnings and quality scores
+          Top performing workers based on earnings and quality scores
         </p>
       </div>
 
@@ -168,7 +168,7 @@ export default function AdminRankingsPage() {
                   <Clock className="w-6 h-6 text-blue-600" />
                 </div>
                 <div>
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Total Paid Hours</p>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Total Hours</p>
                   <p className="font-bold" style={{ color: 'var(--text-primary)' }}>
                     {formatTime(rankings.reduce((sum, r) => sum + (r.totalTime || 0), 0))}
                   </p>
@@ -184,7 +184,7 @@ export default function AdminRankingsPage() {
                   <Award className="w-6 h-6 text-green-600" />
                 </div>
                 <div>
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Avg Paid Quality</p>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Avg Quality</p>
                   <p className="font-bold" style={{ color: 'var(--text-primary)' }}>
                     {formatPercentage(rankings.reduce((sum, r) => sum + (r.avgQuality || 0), 0) / rankings.length)}
                   </p>
@@ -200,7 +200,7 @@ export default function AdminRankingsPage() {
                   <DollarSign className="w-6 h-6 text-emerald-600" />
                 </div>
                 <div>
-                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Total Paid Earnings</p>
+                  <p className="text-sm" style={{ color: 'var(--text-muted)' }}>Total Earnings</p>
                   <p className="font-bold text-emerald-600">
                     {formatCurrency(totalPaidWeeklyEarnings)}
                   </p>
@@ -216,7 +216,7 @@ export default function AdminRankingsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Trophy className="w-6 h-6 text-yellow-500" />
-            Leaderboard (Only Paid Earnings)
+            Leaderboard
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -224,7 +224,7 @@ export default function AdminRankingsPage() {
             <div className="text-center py-12" style={{ color: 'var(--text-muted)' }}>
               <Trophy className="w-16 h-16 mx-auto mb-4 opacity-30" />
               <p className="text-lg font-semibold mb-2">No ranking data available</p>
-              <p className="text-sm">Paid entries will appear here once processed</p>
+              <p className="text-sm">Entries will appear here once processed</p>
             </div>
           ) : (
             <div className="space-y-3">
@@ -318,7 +318,7 @@ export default function AdminRankingsPage() {
                           <div className="p-4 rounded-lg bg-blue-50 border-2 border-blue-200">
                             <div className="flex items-center gap-2 mb-3">
                               <DollarSign className="w-5 h-5 text-blue-600" />
-                              <h4 className="font-bold text-blue-900">Weekly Paid Performance</h4>
+                              <h4 className="font-bold text-blue-900">Weekly Performance</h4>
                             </div>
                             <div className="space-y-2">
                               <div className="flex justify-between">
@@ -334,7 +334,7 @@ export default function AdminRankingsPage() {
                                 <span className="font-semibold text-blue-900">{workerEarnings.weekly.entryCount}</span>
                               </div>
                               <div className="flex justify-between pt-2 border-t-2 border-blue-300">
-                                <span className="text-sm font-bold text-blue-700">Paid Earnings:</span>
+                                <span className="text-sm font-bold text-blue-700">Earnings:</span>
                                 <span className="font-bold text-lg text-emerald-600">
                                   {formatCurrency(workerEarnings.weekly.totalEarnings)}
                                 </span>
@@ -346,7 +346,7 @@ export default function AdminRankingsPage() {
                           <div className="p-4 rounded-lg bg-purple-50 border-2 border-purple-200">
                             <div className="flex items-center gap-2 mb-3">
                               <Wallet className="w-5 h-5 text-purple-600" />
-                              <h4 className="font-bold text-purple-900">Lifetime Paid Performance</h4>
+                              <h4 className="font-bold text-purple-900">Lifetime  Performance</h4>
                             </div>
                             <div className="space-y-2">
                               <div className="flex justify-between">
@@ -362,7 +362,7 @@ export default function AdminRankingsPage() {
                                 <span className="font-semibold text-purple-900">{workerEarnings.lifetime.entryCount}</span>
                               </div>
                               <div className="flex justify-between pt-2 border-t-2 border-purple-300">
-                                <span className="text-sm font-bold text-purple-700">Total Paid Earnings:</span>
+                                <span className="text-sm font-bold text-purple-700">Total  Earnings:</span>
                                 <span className="font-bold text-lg text-emerald-600">
                                   {formatCurrency(workerEarnings.lifetime.totalEarnings)}
                                 </span>
@@ -372,7 +372,7 @@ export default function AdminRankingsPage() {
                         </div>
                       ) : (
                         <p className="text-center text-sm" style={{ color: 'var(--text-muted)' }}>
-                          Failed to load paid earnings data
+                          Failed to load earnings data
                         </p>
                       )}
                     </div>
