@@ -12,7 +12,7 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { forgotPassword, mounted } = useAuth();
+  const { forgotPassword } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,9 +21,6 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      if (!mounted) {
-        throw new Error('Please wait while the app loads...');
-      }
       await forgotPassword(email);
       setSuccess(true);
     } catch (err: unknown) {
