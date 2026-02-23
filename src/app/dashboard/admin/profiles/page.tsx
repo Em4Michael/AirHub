@@ -87,7 +87,7 @@ export default function AdminProfilesPage() {
   const fetchProfiles = async () => {
     try {
       setLoading(true);
-      const response = await adminApi.getAllProfiles(page, 20);
+      const response = await adminApi.getAllProfiles(page, 200);
       if (response.success && response.data) {
         setProfiles(response.data);
         if (response.pagination) setTotalPages(response.pagination.pages);
