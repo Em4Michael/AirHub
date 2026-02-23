@@ -7,7 +7,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Alert } from '@/components/ui/Alert';
 import { Badge } from '@/components/ui/Badge';
 import { Clock, Award, DollarSign, FileText } from 'lucide-react';
-import { apiClient } from '@/lib/api/client'; // your axios instance
+import { apiClient } from '@/lib/api/client'; 
 
 interface UserDetailModalProps {
   userId: string | null;
