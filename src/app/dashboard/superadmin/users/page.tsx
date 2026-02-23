@@ -11,7 +11,10 @@ import { adminApi } from '@/lib/api/admin.api';
 import { superadminApi } from '@/lib/api/superadmin.api';
 import { User } from '@/types';
 import { formatDate } from '@/lib/utils/format';
-import { Search, ExternalLink, ArrowUp, ArrowDown, ShieldOff, Shield } from 'lucide-react';
+import {
+  Search, ChevronLeft, ChevronRight, ExternalLink,
+  ArrowUp, ArrowDown, ShieldOff, Shield,
+} from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 
 export default function SuperadminUsersPage() {
@@ -19,21 +22,24 @@ export default function SuperadminUsersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [page, setPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  useEffect(() => { fetchUsers(); }, []); // removed [page] dependency
+  useEffect(() => { fetchUsers(); }, [page]);
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
       setError('');
-      const response = await adminApi.getAllUsers(1, 500); // fetch all at once
+      const response = await adminApi.getAllUsers(page, 500);
       if (response.success && response.data) {
         const flat = Array.isArray(response.data)
           ? (response.data.flat(Infinity) as User[])
           : [];
         setUsers(flat);
+        if (response.pagination?.pages) setTotalPages(response.pagination.pages);
       } else {
         setUsers([]);
       }
@@ -132,16 +138,18 @@ export default function SuperadminUsersPage() {
             User Management
           </h1>
           <p style={{ color: 'var(--text-secondary)' }} className="mt-1">
-            Manage users, roles, access, and permissions ({users.length} total)
+            Manage users, roles, access, and permissions
           </p>
         </div>
-        <Input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search users..."
-          leftIcon={<Search className="w-5 h-5" />}
-        />
+        <div className="relative">
+          <Input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search users..."
+            leftIcon={<Search className="w-5 h-5" />}
+          />
+        </div>
       </div>
 
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
@@ -155,8 +163,13 @@ export default function SuperadminUsersPage() {
               <thead style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                 <tr>
                   {['User', 'Role', 'Status', 'Joined', 'Bank', 'Role Actions', 'Details'].map((h) => (
-                    <th key={h} className="px-4 py-4 text-left text-xs font-semibold uppercase tracking-wider"
-                      style={{ color: 'var(--text-secondary)' }}>{h}</th>
+                    <th
+                      key={h}
+                      className="px-4 py-4 text-left text-xs font-semibold uppercase tracking-wider"
+                      style={{ color: 'var(--text-secondary)' }}
+                    >
+                      {h}
+                    </th>
                   ))}
                 </tr>
               </thead>
@@ -169,13 +182,19 @@ export default function SuperadminUsersPage() {
                   </tr>
                 ) : (
                   filteredUsers.map((user) => (
-                    <tr key={user._id} className="transition-colors"
+                    <tr
+                      key={user._id}
+                      className="transition-colors"
                       onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}>
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                    >
+                      {/* User */}
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold overflow-hidden flex-shrink-0"
-                            style={{ backgroundColor: user.profilePhoto ? 'transparent' : 'var(--accent-color)' }}>
+                          <div
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold overflow-hidden flex-shrink-0"
+                            style={{ backgroundColor: user.profilePhoto ? 'transparent' : 'var(--accent-color)' }}
+                          >
                             {user.profilePhoto
                               ? <img src={user.profilePhoto} alt={user.name} className="w-full h-full object-cover" />
                               : <span>{getUserInitials(user.name)}</span>}
@@ -186,41 +205,75 @@ export default function SuperadminUsersPage() {
                           </div>
                         </div>
                       </td>
+
+                      {/* Role */}
                       <td className="px-4 py-4">
                         <Badge variant={getRoleColor(user.role) as any}>{user.role.toUpperCase()}</Badge>
                       </td>
+
+                      {/* Status */}
                       <td className="px-4 py-4">
                         <Badge variant={getStatusColor(user.status) as any}>{user.status}</Badge>
                       </td>
+
+                      {/* Joined */}
                       <td className="px-4 py-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
                         {formatDate(user.createdAt)}
                       </td>
+
+                      {/* Bank */}
                       <td className="px-4 py-4">
-                        {user.bankDetails ? <Badge variant="success">Added</Badge> : <Badge variant="warning">Missing</Badge>}
+                        {user.bankDetails ? (
+                          <Badge variant="success">Added</Badge>
+                        ) : (
+                          <Badge variant="warning">Missing</Badge>
+                        )}
                       </td>
+
+                      {/* Role Actions — promote / demote / revoke / restore */}
                       <td className="px-4 py-4">
                         <div className="flex items-center gap-1 flex-wrap">
                           {user.role === 'user' && (user.status === 'approved' || user.isApproved) && (
-                            <Button size="sm" variant="outline" onClick={() => handlePromote(user._id)}
-                              isLoading={actionLoading === user._id} title="Promote to Admin">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handlePromote(user._id)}
+                              isLoading={actionLoading === user._id}
+                              title="Promote to Admin"
+                            >
                               <ArrowUp className="w-3 h-3" />
                             </Button>
                           )}
                           {user.role === 'admin' && (
-                            <Button size="sm" variant="outline" onClick={() => handleDemote(user._id)}
-                              isLoading={actionLoading === user._id} title="Demote to User">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => handleDemote(user._id)}
+                              isLoading={actionLoading === user._id}
+                              title="Demote to User"
+                            >
                               <ArrowDown className="w-3 h-3" />
                             </Button>
                           )}
                           {user.status === 'approved' && user.role !== 'superadmin' && (
-                            <Button size="sm" variant="danger" onClick={() => handleRevoke(user._id)}
-                              isLoading={actionLoading === user._id} title="Revoke Access">
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              onClick={() => handleRevoke(user._id)}
+                              isLoading={actionLoading === user._id}
+                              title="Revoke Access"
+                            >
                               <ShieldOff className="w-3 h-3" />
                             </Button>
                           )}
                           {user.status === 'revoked' && (
-                            <Button size="sm" variant="success" onClick={() => handleRestore(user._id)}
-                              isLoading={actionLoading === user._id} title="Restore Access">
+                            <Button
+                              size="sm"
+                              variant="success"
+                              onClick={() => handleRestore(user._id)}
+                              isLoading={actionLoading === user._id}
+                              title="Restore Access"
+                            >
                               <Shield className="w-3 h-3" />
                             </Button>
                           )}
@@ -229,11 +282,16 @@ export default function SuperadminUsersPage() {
                           )}
                         </div>
                       </td>
+
+                      {/* View Details */}
                       <td className="px-4 py-4">
                         <Link href={`/dashboard/superadmin/users/${user._id}`}>
-                          <button className="text-sm font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg transition-colors"
-                            style={{ color: 'var(--accent-color)', backgroundColor: 'var(--bg-tertiary)' }}>
-                            Details <ExternalLink className="w-3 h-3" />
+                          <button
+                            className="text-sm font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg transition-colors"
+                            style={{ color: 'var(--accent-color)', backgroundColor: 'var(--bg-tertiary)' }}
+                          >
+                            Details
+                            <ExternalLink className="w-3 h-3" />
                           </button>
                         </Link>
                       </td>
@@ -245,6 +303,31 @@ export default function SuperadminUsersPage() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div className="flex items-center justify-center gap-2">
+          <button
+            onClick={() => setPage((p) => Math.max(1, p - 1))}
+            disabled={page === 1}
+            className="p-2 rounded-lg transition-colors disabled:opacity-50"
+            style={{ backgroundColor: 'var(--bg-tertiary)' }}
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          <span className="px-4 py-2 text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
+            Page {page} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            className="p-2 rounded-lg transition-colors disabled:opacity-50"
+            style={{ backgroundColor: 'var(--bg-tertiary)' }}
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
