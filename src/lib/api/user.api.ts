@@ -7,13 +7,6 @@ export const userApi = {
     return response.data;
   },
 
-  /**
-   * FIX (Issue: Failed to update phone number)
-   * This method was completely missing from user.api.ts.
-   * The profile page calls userApi.updateProfile({ phone }) — without this
-   * method the call threw "userApi.updateProfile is not a function".
-   * Route: PUT /user/profile  →  userController.updateProfile
-   */
   updateProfile: async (data: { name?: string; phone?: string }): Promise<ApiResponse<User>> => {
     const response = await apiClient.put('/user/profile', data);
     return response.data;
@@ -83,11 +76,16 @@ export const userApi = {
     if (file.size > 5 * 1024 * 1024) {
       throw new Error('File size must be less than 5MB');
     }
-    const formData = new FormData();
-    formData.append('photo', file);
-    const response = await apiClient.put('/user/profile-photo', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' },
+
+    // Convert file to base64 and send as JSON (works on Render without disk storage)
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(new Error('Failed to read file'));
+      reader.readAsDataURL(file);
     });
+
+    const response = await apiClient.put('/user/profile-photo', { photo: base64 });
     return response.data;
   },
 
