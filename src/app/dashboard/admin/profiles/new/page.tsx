@@ -25,7 +25,7 @@ export default function CreateProfilePage() {
     country: '',
     accountBearerName: '',
     defaultWorker: '',
-    secondWorker: '',   // ← added per spec: up to 2 workers per profile
+    secondWorker: '',   
   });
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
 
