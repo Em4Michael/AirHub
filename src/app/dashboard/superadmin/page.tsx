@@ -12,7 +12,7 @@ import { formatTime, formatPercentage, formatDate, formatCurrency } from '@/lib/
 import {
   Users, Briefcase, FileText, TrendingUp, Trophy, Clock,
   Award, UserCheck, CheckCircle, Plus, ArrowRight, Activity,
-  AlertTriangle, Star, Settings, Shield, DollarSign, BarChart3,
+  AlertTriangle, Star, Settings, Wallet, Shield, DollarSign, BarChart3,
 } from 'lucide-react';
 
 interface WorkerRanking {
@@ -36,6 +36,8 @@ interface SystemStats {
   activeBenchmarks: number;
   totalBonuses: number;
   totalAdmins: number;
+  weeklyEarnings: number;  
+  lifetimeEarnings: number; 
 }
 
 export default function SuperadminDashboard() {
@@ -67,6 +69,8 @@ export default function SuperadminDashboard() {
         activeBenchmarks: systemStatsRes.data?.activeBenchmarks || 0,
         totalBonuses: systemStatsRes.data?.totalBonuses || 0,
         totalAdmins: systemStatsRes.data?.totalAdmins || 0,
+        weeklyEarnings: workerStatsRes.data?.weeklyEarnings || 0,   
+  lifetimeEarnings: workerStatsRes.data?.lifetimeEarnings || 0, 
       };
       setStats(combinedStats);
 
@@ -195,6 +199,51 @@ export default function SuperadminDashboard() {
         </Card>
       </div>
 
+      {/* Earnings Overview */}
+<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <Card>
+    <CardContent className="p-5">
+      <div className="flex items-center gap-4">
+        <div className="w-14 h-14 rounded-xl bg-emerald-100 flex items-center justify-center">
+          <DollarSign className="w-7 h-7 text-emerald-600" />
+        </div>
+        <div>
+          <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
+            Total Earnings This Week
+          </p>
+          <p className="text-3xl font-bold text-emerald-600">
+            {formatCurrency(stats?.weeklyEarnings || 0)}
+          </p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+            Across all approved entries
+          </p>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+
+  <Card>
+    <CardContent className="p-5">
+      <div className="flex items-center gap-4">
+        <div className="w-14 h-14 rounded-xl bg-indigo-100 flex items-center justify-center">
+          <Wallet className="w-7 h-7 text-indigo-600" />
+        </div>
+        <div>
+          <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
+            Lifetime Earnings
+          </p>
+          <p className="text-3xl font-bold text-indigo-600">
+            {formatCurrency(stats?.lifetimeEarnings || 0)}
+          </p>
+          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
+            All time, all workers
+          </p>
+        </div>
+      </div>
+    </CardContent>
+  </Card>
+</div>
+
       {/* Operations Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-l-4 border-l-orange-500">
@@ -253,6 +302,7 @@ export default function SuperadminDashboard() {
           </CardContent>
         </Card>
       </div>
+      
 
       {/* Quick Actions & Leaderboard */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
