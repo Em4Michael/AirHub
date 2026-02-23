@@ -1,7 +1,11 @@
-@import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 /* ============================================
    AIRhub - CSS Variables for Themes
    ============================================ */
+
+   
 :root {
   --font-outfit: 'Outfit', system-ui, sans-serif;
   --font-plus-jakarta: 'Plus Jakarta Sans', system-ui, sans-serif;
