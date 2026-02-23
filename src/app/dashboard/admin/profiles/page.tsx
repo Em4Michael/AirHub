@@ -87,7 +87,7 @@ export default function AdminProfilesPage() {
   const fetchProfiles = async () => {
     try {
       setLoading(true);
-      const response = await adminApi.getAllProfiles(page, 200);
+      const response = await adminApi.getAllProfiles(page, 500);
       if (response.success && response.data) {
         setProfiles(response.data);
         if (response.pagination) setTotalPages(response.pagination.pages);
@@ -99,7 +99,7 @@ export default function AdminProfilesPage() {
 
   const fetchWorkers = async () => {
     try {
-      const response = await adminApi.getAllUsers(1, 200);
+      const response = await adminApi.getAllUsers(1, 500);
       if (response.success && response.data) {
         setWorkers(response.data.filter(
           (u: User) => u.role === 'user' && (u.isApproved === true || u.status === 'approved')

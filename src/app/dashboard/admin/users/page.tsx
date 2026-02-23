@@ -1,56 +1,41 @@
-"use client";
+'use client';
 
-import React, { useEffect, useState } from "react";
-import Link from "next/link";
-import { Card, CardContent } from "@/components/ui/Card";
-import { Badge } from "@/components/ui/Badge";
-import { Spinner } from "@/components/ui/Spinner";
-import { Alert } from "@/components/ui/Alert";
-import { adminApi } from "@/lib/api/admin.api";
-import { User } from "@/types";
-import { formatDate } from "@/lib/utils/format";
-import { Search, ChevronLeft, ChevronRight, ExternalLink } from "lucide-react";
-import { Input } from "@/components/ui/Input";
+import React, { useEffect, useState } from 'react';
+import Link from 'next/link';
+import { Card, CardContent } from '@/components/ui/Card';
+import { Badge } from '@/components/ui/Badge';
+import { Spinner } from '@/components/ui/Spinner';
+import { Alert } from '@/components/ui/Alert';
+import { adminApi } from '@/lib/api/admin.api';
+import { User } from '@/types';
+import { formatDate } from '@/lib/utils/format';
+import { Search, ExternalLink } from 'lucide-react';
+import { Input } from '@/components/ui/Input';
 
 export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [searchQuery, setSearchQuery] = useState("");
+  const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
 
-  useEffect(() => {
-    fetchUsers();
-  }, [page]);
+  useEffect(() => { fetchUsers(); }, []); // removed [page] dependency
 
   const fetchUsers = async () => {
     try {
       setLoading(true);
-      setError("");
-
-      const response = await adminApi.getAllUsers(page, 20);
-
+      setError('');
+      const response = await adminApi.getAllUsers(1, 500); // fetch all at once
       if (response.success && response.data) {
         const flatUsers = Array.isArray(response.data)
           ? (response.data.flat(Infinity) as User[])
           : [];
-
         setUsers(flatUsers);
-
-        if (response.pagination?.pages) {
-          setTotalPages(response.pagination.pages);
-        } else {
-          setTotalPages(1);
-        }
       } else {
         setUsers([]);
-        setTotalPages(1);
       }
     } catch (err: any) {
-      setError(err.response?.data?.message || "Failed to load users");
+      setError(err.response?.data?.message || 'Failed to load users');
       setUsers([]);
-      setTotalPages(1);
     } finally {
       setLoading(false);
     }
@@ -64,41 +49,30 @@ export default function AdminUsersPage() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "approved":
-        return "success";
-      case "pending":
-        return "warning";
-      case "revoked":
-        return "danger";
-      default:
-        return "primary";
+      case 'approved': return 'success';
+      case 'pending': return 'warning';
+      case 'revoked': return 'danger';
+      default: return 'primary';
     }
   };
 
   const getRoleColor = (role: string) => {
     switch (role) {
-      case "superadmin":
-        return "danger";
-      case "admin":
-        return "warning";
-      default:
-        return "primary";
+      case 'superadmin': return 'danger';
+      case 'admin': return 'warning';
+      default: return 'primary';
     }
   };
 
   const getUserInitials = (name: string) => {
-    const names = name.split(" ");
+    const names = name.split(' ');
     return names.length >= 2
       ? (names[0][0] + names[names.length - 1][0]).toUpperCase()
       : name[0].toUpperCase();
   };
 
   if (loading && users.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-96">
-        <Spinner size="lg" />
-      </div>
-    );
+    return <div className="flex items-center justify-center h-96"><Spinner size="lg" /></div>;
   }
 
   return (
@@ -106,14 +80,9 @@ export default function AdminUsersPage() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
         <div>
-          <h1
-            className="text-3xl font-bold"
-            style={{ color: "var(--text-primary)" }}
-          >
-            Users
-          </h1>
-          <p style={{ color: "var(--text-secondary)" }} className="mt-1">
-            Manage all users and view their details
+          <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>Users</h1>
+          <p style={{ color: 'var(--text-secondary)' }} className="mt-1">
+            Manage all users and view their details ({users.length} total)
           </p>
         </div>
         <div className="relative">
@@ -127,154 +96,64 @@ export default function AdminUsersPage() {
         </div>
       </div>
 
-      {error && (
-        <Alert type="error" message={error} onClose={() => setError("")} />
-      )}
+      {error && <Alert type="error" message={error} onClose={() => setError('')} />}
 
       {/* Users Table */}
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
             <table className="w-full">
-              <thead style={{ backgroundColor: "var(--bg-tertiary)" }}>
+              <thead style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                 <tr>
-                  <th
-                    className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    User
-                  </th>
-                  <th
-                    className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    Role
-                  </th>
-                  <th
-                    className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    Status
-                  </th>
-                  <th
-                    className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    Joined
-                  </th>
-                  <th
-                    className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    Bank Details
-                  </th>
-                  <th
-                    className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    Actions
-                  </th>
+                  {['User', 'Role', 'Status', 'Joined', 'Bank Details', 'Actions'].map((h) => (
+                    <th key={h} className="px-6 py-4 text-left text-xs font-semibold uppercase tracking-wider"
+                      style={{ color: 'var(--text-secondary)' }}>{h}</th>
+                  ))}
                 </tr>
               </thead>
-              <tbody
-                className="divide-y"
-                style={{ borderColor: "var(--border-color)" }}
-              >
+              <tbody className="divide-y" style={{ borderColor: 'var(--border-color)' }}>
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={6}
-                      className="px-6 py-12 text-center"
-                      style={{ color: "var(--text-muted)" }}
-                    >
+                    <td colSpan={6} className="px-6 py-12 text-center" style={{ color: 'var(--text-muted)' }}>
                       No users found
                     </td>
                   </tr>
                 ) : (
                   filteredUsers.map((user) => (
-                    <tr
-                      key={user._id}
-                      className="transition-colors hover:bg-opacity-50"
-                      style={{ backgroundColor: "transparent" }}
-                      onMouseEnter={(e) =>
-                        (e.currentTarget.style.backgroundColor =
-                          "var(--bg-tertiary)")
-                      }
-                      onMouseLeave={(e) =>
-                        (e.currentTarget.style.backgroundColor = "transparent")
-                      }
-                    >
+                    <tr key={user._id} className="transition-colors"
+                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)')}
+                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}>
                       <td className="px-6 py-4">
                         <div className="flex items-center gap-3">
-                          {/* Profile Photo or Initials */}
-                          <div
-                            className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold overflow-hidden"
-                            style={{
-                              backgroundColor: user.profilePhoto
-                                ? "transparent"
-                                : "var(--accent-color)",
-                            }}
-                          >
-                            {user.profilePhoto ? (
-                              <img
-                                src={user.profilePhoto}
-                                alt={user.name}
-                                className="w-full h-full object-cover"
-                              />
-                            ) : (
-                              <span>{getUserInitials(user.name)}</span>
-                            )}
+                          <div className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold overflow-hidden"
+                            style={{ backgroundColor: user.profilePhoto ? 'transparent' : 'var(--accent-color)' }}>
+                            {user.profilePhoto
+                              ? <img src={user.profilePhoto} alt={user.name} className="w-full h-full object-cover" />
+                              : <span>{getUserInitials(user.name)}</span>}
                           </div>
                           <div>
-                            <p
-                              className="font-semibold"
-                              style={{ color: "var(--text-primary)" }}
-                            >
-                              {user.name}
-                            </p>
-                            <p
-                              className="text-sm"
-                              style={{ color: "var(--text-muted)" }}
-                            >
-                              {user.email}
-                            </p>
+                            <p className="font-semibold" style={{ color: 'var(--text-primary)' }}>{user.name}</p>
+                            <p className="text-sm" style={{ color: 'var(--text-muted)' }}>{user.email}</p>
                           </div>
                         </div>
                       </td>
                       <td className="px-6 py-4">
-                        <Badge variant={getRoleColor(user.role) as any}>
-                          {user.role.toUpperCase()}
-                        </Badge>
+                        <Badge variant={getRoleColor(user.role) as any}>{user.role.toUpperCase()}</Badge>
                       </td>
                       <td className="px-6 py-4">
-                        <Badge variant={getStatusColor(user.status) as any}>
-                          {user.status}
-                        </Badge>
+                        <Badge variant={getStatusColor(user.status) as any}>{user.status}</Badge>
                       </td>
-                      <td
-                        className="px-6 py-4 text-sm"
-                        style={{ color: "var(--text-secondary)" }}
-                      >
+                      <td className="px-6 py-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
                         {formatDate(user.createdAt)}
                       </td>
                       <td className="px-6 py-4">
-                        {user.bankDetails ? (
-                          <Badge variant="success">Added</Badge>
-                        ) : (
-                          <Badge variant="warning">Missing</Badge>
-                        )}
+                        {user.bankDetails ? <Badge variant="success">Added</Badge> : <Badge variant="warning">Missing</Badge>}
                       </td>
                       <td className="px-6 py-4">
                         <Link href={`/dashboard/admin/users/${user._id}`}>
-                          <button
-                            className="text-sm font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg transition-colors hover:bg-opacity-80"
-                            style={{
-                              color: "var(--accent-color)",
-                              backgroundColor: "var(--bg-tertiary)",
-                            }}
-                          >
-                            View Details
-                            <ExternalLink className="w-4 h-4" />
+                          <button className="text-sm font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg transition-colors"
+                            style={{ color: 'var(--accent-color)', backgroundColor: 'var(--bg-tertiary)' }}>
+                            View Details <ExternalLink className="w-4 h-4" />
                           </button>
                         </Link>
                       </td>
@@ -286,34 +165,6 @@ export default function AdminUsersPage() {
           </div>
         </CardContent>
       </Card>
-
-      {/* Pagination */}
-      {totalPages > 1 && (
-        <div className="flex items-center justify-center gap-2">
-          <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
-            className="p-2 rounded-lg transition-colors disabled:opacity-50"
-            style={{ backgroundColor: "var(--bg-tertiary)" }}
-          >
-            <ChevronLeft className="w-5 h-5" />
-          </button>
-          <span
-            className="px-4 py-2 text-sm font-medium"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            Page {page} of {totalPages}
-          </span>
-          <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
-            className="p-2 rounded-lg transition-colors disabled:opacity-50"
-            style={{ backgroundColor: "var(--bg-tertiary)" }}
-          >
-            <ChevronRight className="w-5 h-5" />
-          </button>
-        </div>
-      )}
     </div>
   );
 }
