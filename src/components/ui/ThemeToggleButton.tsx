@@ -11,7 +11,7 @@ export const ThemeToggleButton: React.FC = () => {
     <>
       <button
         onClick={() => setIsModalOpen(true)}
-        className="fixed bottom-17 right-6 w-16 h-16 rounded-full shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-110 z-40 flex items-center justify-center group animate-pulse-glow"
+        className="fixed bottom-9 right-6 w-16 h-16 rounded-full shadow-2xl hover:shadow-3xl transition-all duration-300 hover:scale-110 z-40 flex items-center justify-center group animate-pulse-glow"
         style={{
           background: 'linear-gradient(135deg, #8b5cf6 0%, #7c3aed 100%)',
           color: 'white'
