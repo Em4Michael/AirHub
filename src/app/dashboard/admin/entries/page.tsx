@@ -39,7 +39,7 @@ export default function AdminEntriesPage() {
     try {
       setLoading(true);
       const approved = filter === 'all' ? undefined : filter === 'approved';
-      const response = await adminApi.getAllEntries(page, 20, approved);
+      const response = await adminApi.getAllEntries(page, 500, approved);
       if (response.success && response.data) {
         setEntries(response.data);
         if (response.pagination) setTotalPages(response.pagination.pages);

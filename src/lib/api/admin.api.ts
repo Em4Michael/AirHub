@@ -175,7 +175,7 @@ export const adminApi = {
   // Entry management
   // -------------------------------------------------------------------------
 
-  getAllEntries: async (page = 1, limit = 50, approved?: boolean): Promise<PaginatedResponse<Entry>> => {
+  getAllEntries: async (page = 1, limit = 500, approved?: boolean): Promise<PaginatedResponse<Entry>> => {
     const params: Record<string, any> = { page, limit };
     if (approved !== undefined) params.approved = approved;
     const response = await apiClient.get('/admin/entries', { params });

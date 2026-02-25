@@ -31,6 +31,11 @@ export default function UserProfilesPage() {
   const [savingPhone, setSavingPhone] = useState(false);
   const [phoneInput, setPhoneInput] = useState('');
 
+  // Name state
+  const [editingName, setEditingName] = useState(false);
+  const [savingName, setSavingName] = useState(false);
+  const [nameInput, setNameInput] = useState('');
+
   // Photo state
   const [uploadingPhoto, setUploadingPhoto] = useState(false);
   const [deletingPhoto, setDeletingPhoto] = useState(false);
@@ -45,9 +50,8 @@ export default function UserProfilesPage() {
         accountNumber: user.bankDetails.accountNumber || '',
       });
     }
-    if (user?.phone) {
-      setPhoneInput(user.phone);
-    }
+    if (user?.phone) setPhoneInput(user.phone);
+    if (user?.name)  setNameInput(user.name);
   }, [user]);
 
   const fetchProfiles = async () => {
@@ -76,7 +80,6 @@ export default function UserProfilesPage() {
   const handleSavePhone = async () => {
     setSavingPhone(true); setError(''); setSuccess('');
     try {
-      // PUT /api/user/profile  (handled by userController.updateProfile)
       await userApi.updateProfile({ phone: phoneInput });
       await refreshUser();
       setEditingPhone(false);
@@ -86,10 +89,21 @@ export default function UserProfilesPage() {
     } finally { setSavingPhone(false); }
   };
 
-  const handleCancelPhone = () => {
-    setPhoneInput(user?.phone || '');
-    setEditingPhone(false);
+  const handleSaveName = async () => {
+    if (!nameInput.trim()) { setError('Name cannot be empty'); return; }
+    setSavingName(true); setError(''); setSuccess('');
+    try {
+      await userApi.updateProfile({ name: nameInput.trim() });
+      await refreshUser();
+      setEditingName(false);
+      setSuccess('Name updated successfully');
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to update name');
+    } finally { setSavingName(false); }
   };
+
+  const handleCancelPhone = () => { setPhoneInput(user?.phone || ''); setEditingPhone(false); };
+  const handleCancelName  = () => { setNameInput(user?.name   || ''); setEditingName(false);  };
 
   const getUserInitials = () => {
     if (!user?.name) return '?';
@@ -136,6 +150,67 @@ export default function UserProfilesPage() {
     user?.bankDetails &&
     (user.bankDetails.bankName || user.bankDetails.accountName || user.bankDetails.accountNumber);
 
+  // Reusable inline-edit row ─────────────────────────────────────────────────
+  const InlineEditField = ({
+    icon, label, value, editing, saving,
+    input, onInputChange, onSave, onEdit, onCancel, placeholder = '',
+    inputType = 'text',
+  }: {
+    icon: React.ReactNode; label: string; value?: string | null;
+    editing: boolean; saving: boolean; input: string;
+    onInputChange: (v: string) => void;
+    onSave: () => void; onEdit: () => void; onCancel: () => void;
+    placeholder?: string; inputType?: string;
+  }) => (
+    <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+      <div className="mt-0.5" style={{ color: 'var(--accent-color)' }}>{icon}</div>
+      <div className="flex-1 min-w-0">
+        <p className="text-xs uppercase font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>{label}</p>
+        {editing ? (
+          <div className="flex items-center gap-2">
+            <input
+              type={inputType}
+              value={input}
+              onChange={(e) => onInputChange(e.target.value)}
+              placeholder={placeholder}
+              className="input text-sm flex-1"
+              style={{ padding: '4px 8px' }}
+              autoFocus
+              onKeyDown={(e) => { if (e.key === 'Enter') onSave(); if (e.key === 'Escape') onCancel(); }}
+            />
+            <button
+              onClick={onSave}
+              disabled={saving}
+              className="p-1 rounded text-green-600 hover:bg-green-50 disabled:opacity-50"
+              title="Save"
+            >
+              {saving
+                ? <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin" />
+                : <Check className="w-4 h-4" />}
+            </button>
+            <button onClick={onCancel} className="p-1 rounded text-red-500 hover:bg-red-50" title="Cancel">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2">
+            <p className="font-medium truncate" style={{ color: value ? 'var(--text-primary)' : 'var(--text-muted)' }}>
+              {value || 'Not set'}
+            </p>
+            <button
+              onClick={onEdit}
+              className="p-1 rounded flex-shrink-0 transition-colors"
+              style={{ color: 'var(--accent-color)' }}
+              title={`Edit ${label.toLowerCase()}`}
+            >
+              <Edit2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
   return (
     <div className="space-y-6 pb-20 lg:pb-6" style={{ minHeight: '100vh' }}>
       <div>
@@ -145,7 +220,7 @@ export default function UserProfilesPage() {
         </p>
       </div>
 
-      {error && <Alert type="error" message={error} onClose={() => setError('')} />}
+      {error   && <Alert type="error"   message={error}   onClose={() => setError('')}   />}
       {success && <Alert type="success" message={success} onClose={() => setSuccess('')} />}
 
       {user && (
@@ -175,11 +250,9 @@ export default function UserProfilesPage() {
                   disabled={uploadingPhoto}
                   className="absolute inset-0 flex items-center justify-center rounded-full bg-black/50 opacity-0 hover:opacity-100 transition-opacity disabled:opacity-50"
                 >
-                  {uploadingPhoto ? (
-                    <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  ) : (
-                    <Camera className="w-6 h-6 text-white" />
-                  )}
+                  {uploadingPhoto
+                    ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    : <Camera className="w-6 h-6 text-white" />}
                 </button>
                 <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoSelect} className="hidden" />
               </div>
@@ -191,25 +264,23 @@ export default function UserProfilesPage() {
                   <Badge variant={user.role === 'superadmin' ? 'danger' : user.role === 'admin' ? 'warning' : 'primary'}>
                     {user.role.toUpperCase()}
                   </Badge>
-                  <div className="flex gap-2">
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={uploadingPhoto}
+                    className="px-3 py-1 rounded-lg text-xs font-medium bg-white/20 hover:bg-white/30 text-white transition-colors disabled:opacity-50 flex items-center gap-1"
+                  >
+                    <Upload className="w-3 h-3" />
+                    {user.profilePhoto ? 'Change' : 'Upload'}
+                  </button>
+                  {user.profilePhoto && (
                     <button
-                      onClick={() => fileInputRef.current?.click()}
-                      disabled={uploadingPhoto}
-                      className="px-3 py-1 rounded-lg text-xs font-medium bg-white/20 hover:bg-white/30 text-white transition-colors disabled:opacity-50 flex items-center gap-1"
+                      onClick={handleDeletePhoto}
+                      disabled={deletingPhoto}
+                      className="px-3 py-1 rounded-lg text-xs font-medium bg-red-500/20 hover:bg-red-500/30 text-white transition-colors disabled:opacity-50 flex items-center gap-1"
                     >
-                      <Upload className="w-3 h-3" />
-                      {user.profilePhoto ? 'Change' : 'Upload'}
+                      <Trash2 className="w-3 h-3" />Delete
                     </button>
-                    {user.profilePhoto && (
-                      <button
-                        onClick={handleDeletePhoto}
-                        disabled={deletingPhoto}
-                        className="px-3 py-1 rounded-lg text-xs font-medium bg-red-500/20 hover:bg-red-500/30 text-white transition-colors disabled:opacity-50 flex items-center gap-1"
-                      >
-                        <Trash2 className="w-3 h-3" />Delete
-                      </button>
-                    )}
-                  </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -221,16 +292,23 @@ export default function UserProfilesPage() {
               Personal Information
             </h3>
             <div className="grid md:grid-cols-2 gap-4">
-              {/* Name */}
-              <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                <User className="w-5 h-5 mt-0.5" style={{ color: 'var(--accent-color)' }} />
-                <div>
-                  <p className="text-xs uppercase font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Full Name</p>
-                  <p className="font-medium" style={{ color: 'var(--text-primary)' }}>{user.name}</p>
-                </div>
-              </div>
 
-              {/* Email */}
+              {/* Name — editable */}
+              <InlineEditField
+                icon={<User className="w-5 h-5" />}
+                label="Full Name"
+                value={user.name}
+                editing={editingName}
+                saving={savingName}
+                input={nameInput}
+                onInputChange={setNameInput}
+                onSave={handleSaveName}
+                onEdit={() => { setNameInput(user.name || ''); setEditingName(true); }}
+                onCancel={handleCancelName}
+                placeholder="Enter your full name"
+              />
+
+              {/* Email — read-only */}
               <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                 <Mail className="w-5 h-5 mt-0.5" style={{ color: 'var(--accent-color)' }} />
                 <div>
@@ -240,51 +318,22 @@ export default function UserProfilesPage() {
               </div>
 
               {/* Phone — editable */}
-              <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
-                <Phone className="w-5 h-5 mt-0.5" style={{ color: 'var(--accent-color)' }} />
-                <div className="flex-1">
-                  <p className="text-xs uppercase font-semibold mb-1" style={{ color: 'var(--text-muted)' }}>Phone Number</p>
-                  {editingPhone ? (
-                    <div className="flex items-center gap-2">
-                      <input
-                        type="tel"
-                        value={phoneInput}
-                        onChange={(e) => setPhoneInput(e.target.value)}
-                        placeholder="+234 800 000 0000"
-                        className="input text-sm flex-1"
-                        style={{ padding: '4px 8px' }}
-                        autoFocus
-                      />
-                      <button
-                        onClick={handleSavePhone}
-                        disabled={savingPhone}
-                        className="p-1 rounded text-green-600 hover:bg-green-50 disabled:opacity-50"
-                      >
-                        {savingPhone ? <div className="w-4 h-4 border-2 border-green-600 border-t-transparent rounded-full animate-spin" /> : <Check className="w-4 h-4" />}
-                      </button>
-                      <button onClick={handleCancelPhone} className="p-1 rounded text-red-500 hover:bg-red-50">
-                        <X className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-2">
-                      <p className="font-medium" style={{ color: user.phone ? 'var(--text-primary)' : 'var(--text-muted)' }}>
-                        {user.phone || 'Not set'}
-                      </p>
-                      <button
-                        onClick={() => { setPhoneInput(user.phone || ''); setEditingPhone(true); }}
-                        className="p-1 rounded hover:bg-opacity-80 transition-colors"
-                        style={{ color: 'var(--accent-color)' }}
-                        title="Edit phone"
-                      >
-                        <Edit2 className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
+              <InlineEditField
+                icon={<Phone className="w-5 h-5" />}
+                label="Phone Number"
+                value={user.phone}
+                editing={editingPhone}
+                saving={savingPhone}
+                input={phoneInput}
+                onInputChange={setPhoneInput}
+                onSave={handleSavePhone}
+                onEdit={() => { setPhoneInput(user.phone || ''); setEditingPhone(true); }}
+                onCancel={handleCancelPhone}
+                placeholder="+234 800 000 0000"
+                inputType="tel"
+              />
 
-              {/* Joined */}
+              {/* Joined — read-only */}
               <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                 <Calendar className="w-5 h-5 mt-0.5" style={{ color: 'var(--accent-color)' }} />
                 <div>
@@ -297,7 +346,7 @@ export default function UserProfilesPage() {
                 </div>
               </div>
 
-              {/* Status */}
+              {/* Status — read-only */}
               <div className="flex items-start gap-3 p-4 rounded-lg" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                 <Briefcase className="w-5 h-5 mt-0.5" style={{ color: 'var(--accent-color)' }} />
                 <div>
@@ -342,8 +391,8 @@ export default function UserProfilesPage() {
                       setEditingBank(false);
                       if (user.bankDetails) {
                         setBankData({
-                          bankName: user.bankDetails.bankName || '',
-                          accountName: user.bankDetails.accountName || '',
+                          bankName:      user.bankDetails.bankName      || '',
+                          accountName:   user.bankDetails.accountName   || '',
                           accountNumber: user.bankDetails.accountNumber || '',
                         });
                       }

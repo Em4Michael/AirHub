@@ -101,20 +101,20 @@ export default function SuperadminUsersPage() {
       u.email.toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
-  const getStatusColor = (status: string) => {
+  const getStatusVariant = (status: string) => {
     switch (status) {
       case 'approved': return 'success';
-      case 'pending': return 'warning';
-      case 'revoked': return 'danger';
-      default: return 'primary';
+      case 'pending':  return 'warning';
+      case 'revoked':  return 'danger';
+      default:         return 'primary';
     }
   };
 
-  const getRoleColor = (role: string) => {
+  const getRoleVariant = (role: string) => {
     switch (role) {
       case 'superadmin': return 'danger';
-      case 'admin': return 'warning';
-      default: return 'primary';
+      case 'admin':      return 'warning';
+      default:           return 'primary';
     }
   };
 
@@ -125,6 +125,53 @@ export default function SuperadminUsersPage() {
       : name[0].toUpperCase();
   };
 
+  const Avatar = ({ user }: { user: User }) => (
+    <div
+      className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold overflow-hidden flex-shrink-0"
+      style={{ backgroundColor: user.profilePhoto ? 'transparent' : 'var(--accent-color)' }}
+    >
+      {user.profilePhoto
+        ? <img src={user.profilePhoto} alt={user.name} className="w-full h-full object-cover" />
+        : <span className="text-sm">{getUserInitials(user.name)}</span>}
+    </div>
+  );
+
+  // Action buttons for a user — shared between mobile and desktop
+  const ActionButtons = ({ user }: { user: User }) => {
+    const busy = actionLoading === user._id;
+    if (user.role === 'superadmin') {
+      return <span className="text-xs" style={{ color: 'var(--text-muted)' }}>—</span>;
+    }
+    return (
+      <div className="flex items-center gap-1 flex-wrap">
+        {user.role === 'user' && (user.status === 'approved' || user.isApproved) && (
+          <Button size="sm" variant="outline" onClick={() => handlePromote(user._id)}
+            isLoading={busy} title="Promote to Admin">
+            <ArrowUp className="w-3 h-3" />
+          </Button>
+        )}
+        {user.role === 'admin' && (
+          <Button size="sm" variant="outline" onClick={() => handleDemote(user._id)}
+            isLoading={busy} title="Demote to User">
+            <ArrowDown className="w-3 h-3" />
+          </Button>
+        )}
+        {user.status === 'approved' && (
+          <Button size="sm" variant="danger" onClick={() => handleRevoke(user._id)}
+            isLoading={busy} title="Revoke Access">
+            <ShieldOff className="w-3 h-3" />
+          </Button>
+        )}
+        {user.status === 'revoked' && (
+          <Button size="sm" variant="success" onClick={() => handleRestore(user._id)}
+            isLoading={busy} title="Restore Access">
+            <Shield className="w-3 h-3" />
+          </Button>
+        )}
+      </div>
+    );
+  };
+
   if (loading && users.length === 0) {
     return <div className="flex items-center justify-center h-96"><Spinner size="lg" /></div>;
   }
@@ -132,16 +179,16 @@ export default function SuperadminUsersPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
-          <h1 className="text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>
+          <h1 className="text-2xl sm:text-3xl font-bold" style={{ color: 'var(--text-primary)' }}>
             User Management
           </h1>
-          <p style={{ color: 'var(--text-secondary)' }} className="mt-1">
-            Manage users, roles, access, and permissions
+          <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+            Manage users, roles, access, and permissions ({users.length} total)
           </p>
         </div>
-        <div className="relative">
+        <div className="w-full sm:w-64">
           <Input
             type="text"
             value={searchQuery}
@@ -152,17 +199,67 @@ export default function SuperadminUsersPage() {
         </div>
       </div>
 
-      {error && <Alert type="error" message={error} onClose={() => setError('')} />}
+      {error   && <Alert type="error"   message={error}   onClose={() => setError('')}   />}
       {success && <Alert type="success" message={success} onClose={() => setSuccess('')} />}
 
-      {/* Users Table */}
-      <Card>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
+      {/* ── Mobile cards (hidden on md+) ── */}
+      <div className="md:hidden space-y-3">
+        {filteredUsers.length === 0 ? (
+          <p className="text-center py-12 text-sm" style={{ color: 'var(--text-muted)' }}>No users found</p>
+        ) : filteredUsers.map((user) => (
+          <div
+            key={user._id}
+            className="rounded-xl border p-4 space-y-3"
+            style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}
+          >
+            {/* Row 1: avatar + name/email + details link */}
+            <div className="flex items-center gap-3">
+              <Avatar user={user} />
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{user.name}</p>
+                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{user.email}</p>
+              </div>
+              <Link href={`/dashboard/superadmin/users/${user._id}`} className="flex-shrink-0">
+                <button
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium"
+                  style={{ color: 'var(--accent-color)', backgroundColor: 'var(--bg-tertiary)' }}
+                >
+                  Details <ExternalLink className="w-3 h-3" />
+                </button>
+              </Link>
+            </div>
+
+            {/* Row 2: badges */}
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge variant={getRoleVariant(user.role) as any}>{user.role.toUpperCase()}</Badge>
+              <Badge variant={getStatusVariant(user.status) as any}>{user.status}</Badge>
+              {user.bankDetails
+                ? <Badge variant="success">Bank added</Badge>
+                : <Badge variant="warning">No bank</Badge>}
+              <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>
+                {formatDate(user.createdAt)}
+              </span>
+            </div>
+
+            {/* Row 3: action buttons */}
+            <div
+              className="pt-3 border-t"
+              style={{ borderColor: 'var(--border-color)' }}
+            >
+              <ActionButtons user={user} />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* ── Desktop table (hidden below md) ── */}
+      <div className="hidden md:block">
+        <Card>
+          <CardContent className="p-0">
             <table className="w-full">
               <thead style={{ backgroundColor: 'var(--bg-tertiary)' }}>
                 <tr>
-                  {['User', 'Role', 'Status', 'Joined', 'Bank', 'Role Actions', 'Details'].map((h) => (
+                  {['User', 'Role', 'Status', 'Joined', 'Bank', 'Actions', 'Details'].map((h) => (
                     <th
                       key={h}
                       className="px-4 py-4 text-left text-xs font-semibold uppercase tracking-wider"
@@ -180,129 +277,56 @@ export default function SuperadminUsersPage() {
                       No users found
                     </td>
                   </tr>
-                ) : (
-                  filteredUsers.map((user) => (
-                    <tr
-                      key={user._id}
-                      className="transition-colors"
-                      onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)')}
-                      onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
-                    >
-                      {/* User */}
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="w-9 h-9 rounded-full flex items-center justify-center text-white text-sm font-semibold overflow-hidden flex-shrink-0"
-                            style={{ backgroundColor: user.profilePhoto ? 'transparent' : 'var(--accent-color)' }}
-                          >
-                            {user.profilePhoto
-                              ? <img src={user.profilePhoto} alt={user.name} className="w-full h-full object-cover" />
-                              : <span>{getUserInitials(user.name)}</span>}
-                          </div>
-                          <div className="min-w-0">
-                            <p className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{user.name}</p>
-                            <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{user.email}</p>
-                          </div>
+                ) : filteredUsers.map((user) => (
+                  <tr
+                    key={user._id}
+                    className="transition-colors"
+                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)')}
+                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}
+                  >
+                    <td className="px-4 py-4">
+                      <div className="flex items-center gap-3">
+                        <Avatar user={user} />
+                        <div className="min-w-0">
+                          <p className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{user.name}</p>
+                          <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{user.email}</p>
                         </div>
-                      </td>
-
-                      {/* Role */}
-                      <td className="px-4 py-4">
-                        <Badge variant={getRoleColor(user.role) as any}>{user.role.toUpperCase()}</Badge>
-                      </td>
-
-                      {/* Status */}
-                      <td className="px-4 py-4">
-                        <Badge variant={getStatusColor(user.status) as any}>{user.status}</Badge>
-                      </td>
-
-                      {/* Joined */}
-                      <td className="px-4 py-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                        {formatDate(user.createdAt)}
-                      </td>
-
-                      {/* Bank */}
-                      <td className="px-4 py-4">
-                        {user.bankDetails ? (
-                          <Badge variant="success">Added</Badge>
-                        ) : (
-                          <Badge variant="warning">Missing</Badge>
-                        )}
-                      </td>
-
-                      {/* Role Actions — promote / demote / revoke / restore */}
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-1 flex-wrap">
-                          {user.role === 'user' && (user.status === 'approved' || user.isApproved) && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handlePromote(user._id)}
-                              isLoading={actionLoading === user._id}
-                              title="Promote to Admin"
-                            >
-                              <ArrowUp className="w-3 h-3" />
-                            </Button>
-                          )}
-                          {user.role === 'admin' && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => handleDemote(user._id)}
-                              isLoading={actionLoading === user._id}
-                              title="Demote to User"
-                            >
-                              <ArrowDown className="w-3 h-3" />
-                            </Button>
-                          )}
-                          {user.status === 'approved' && user.role !== 'superadmin' && (
-                            <Button
-                              size="sm"
-                              variant="danger"
-                              onClick={() => handleRevoke(user._id)}
-                              isLoading={actionLoading === user._id}
-                              title="Revoke Access"
-                            >
-                              <ShieldOff className="w-3 h-3" />
-                            </Button>
-                          )}
-                          {user.status === 'revoked' && (
-                            <Button
-                              size="sm"
-                              variant="success"
-                              onClick={() => handleRestore(user._id)}
-                              isLoading={actionLoading === user._id}
-                              title="Restore Access"
-                            >
-                              <Shield className="w-3 h-3" />
-                            </Button>
-                          )}
-                          {user.role === 'superadmin' && (
-                            <span className="text-xs" style={{ color: 'var(--text-muted)' }}>—</span>
-                          )}
-                        </div>
-                      </td>
-
-                      {/* View Details */}
-                      <td className="px-4 py-4">
-                        <Link href={`/dashboard/superadmin/users/${user._id}`}>
-                          <button
-                            className="text-sm font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg transition-colors"
-                            style={{ color: 'var(--accent-color)', backgroundColor: 'var(--bg-tertiary)' }}
-                          >
-                            Details
-                            <ExternalLink className="w-3 h-3" />
-                          </button>
-                        </Link>
-                      </td>
-                    </tr>
-                  ))
-                )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <Badge variant={getRoleVariant(user.role) as any}>{user.role.toUpperCase()}</Badge>
+                    </td>
+                    <td className="px-4 py-4">
+                      <Badge variant={getStatusVariant(user.status) as any}>{user.status}</Badge>
+                    </td>
+                    <td className="px-4 py-4 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                      {formatDate(user.createdAt)}
+                    </td>
+                    <td className="px-4 py-4">
+                      {user.bankDetails
+                        ? <Badge variant="success">Added</Badge>
+                        : <Badge variant="warning">Missing</Badge>}
+                    </td>
+                    <td className="px-4 py-4">
+                      <ActionButtons user={user} />
+                    </td>
+                    <td className="px-4 py-4">
+                      <Link href={`/dashboard/superadmin/users/${user._id}`}>
+                        <button
+                          className="text-sm font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg transition-colors"
+                          style={{ color: 'var(--accent-color)', backgroundColor: 'var(--bg-tertiary)' }}
+                        >
+                          Details <ExternalLink className="w-3 h-3" />
+                        </button>
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
               </tbody>
             </table>
-          </div>
-        </CardContent>
-      </Card>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Pagination */}
       {totalPages > 1 && (
