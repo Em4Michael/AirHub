@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Navbar } from './Navbar';
 import { Sidebar } from './Sidebar';
 import { ThemeToggleButton } from '@/components/ui/ThemeToggleButton';
@@ -10,34 +10,29 @@ interface DashboardLayoutProps {
 }
 
 export const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
+  const [collapsed, setCollapsed] = useState(false);
+
   return (
-    <div 
+    <div
       className="min-h-screen transition-colors duration-300"
-      style={{
-        backgroundColor: 'var(--bg-primary)',
-        color: 'var(--text-primary)',
-      }}
+      style={{ backgroundColor: 'var(--bg-primary)', color: 'var(--text-primary)' }}
     >
-      {/* Navbar - fixed at top */}
       <Navbar />
 
-      {/* Main content area */}
       <div className="flex">
-        {/* Sidebar - fixed on the left (hidden on mobile) */}
-        <Sidebar />
+        {/* Pass collapsed state down so main content can respond to it */}
+        <Sidebar collapsed={collapsed} onCollapsedChange={setCollapsed} />
 
-        {/* Main content - with left margin for sidebar and bottom padding for mobile nav */}
-        <main 
-          className="flex-1 min-h-[calc(100vh-4rem)] transition-colors duration-300 lg:ml-0 pb-24 lg:pb-6"
-          style={{
-            backgroundColor: 'var(--bg-primary)',
-          }}
+        <main
+          className="flex-1 min-w-0 min-h-[calc(100vh-4rem)] transition-all duration-300 pb-24 lg:pb-6"
+          style={{ backgroundColor: 'var(--bg-primary)' }}
         >
-          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
-            {/* Floating theme customization button */}
+          {/*
+            No max-w-7xl — let the content fill whatever space the sidebar leaves.
+            flex-1 + min-w-0 on <main> means it genuinely shrinks/grows with the sidebar.
+          */}
+          <div className="w-full px-4 sm:px-6 lg:px-8 py-6 lg:py-8">
             <ThemeToggleButton />
-
-            {/* Page content */}
             {children}
           </div>
         </main>
