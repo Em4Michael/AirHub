@@ -94,3 +94,10 @@ export const userApi = {
     return response.data;
   },
 };
+
+getTopEarners: async (weekStart?: string): Promise<ApiResponse<any>> => {
+  const response = await apiClient.get('/user/top-earners', {
+    params: weekStart ? { weekStart } : {},
+  });
+  return response.data;
+};
