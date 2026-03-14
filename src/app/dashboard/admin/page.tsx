@@ -7,6 +7,7 @@ import { Badge } from '@/components/ui/Badge';
 import { Spinner } from '@/components/ui/Spinner';
 import { Alert } from '@/components/ui/Alert';
 import { adminApi } from '@/lib/api/admin.api';
+import AdminEarningsSection from '@/components/layout/Adminearningssection';
 import { formatTime, formatPercentage, formatCurrency } from '@/lib/utils/format';
 import { 
   Users, Briefcase, FileText, Clock, Award, UserCheck, 
@@ -281,6 +282,9 @@ export default function AdminDashboard() {
           </CardContent>
         </Card>
       </div>
+
+      <AdminEarningsSection />
+
 
       {/* Quick Actions & Leaderboard */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
