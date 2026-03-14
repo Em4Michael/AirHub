@@ -25,7 +25,7 @@ const navigation: NavItem[] = [
   { name: 'My Profiles', href: '/dashboard/user/profiles',      icon: Briefcase,       roles: [UserRole.USER] },
   { name: 'My Entries',  href: '/dashboard/user/entries',       icon: FileText,        roles: [UserRole.USER] },
   { name: 'Bank Details',href: '/dashboard/user/bank',          icon: DollarSign,      roles: [UserRole.USER] },
-  { name: 'Top Earners', href: '/dashboard/user/top-earners',   icon: Trophy,          roles: [UserRole.USER] },
+  { name: 'Top Earners', href: '/dashboard/user/topEarners',   icon: Trophy,          roles: [UserRole.USER] },
 
   // Admin routes
   { name: 'Dashboard',   href: '/dashboard/admin',              icon: BarChart3, roles: [UserRole.ADMIN] },
@@ -34,7 +34,7 @@ const navigation: NavItem[] = [
   { name: 'Entries',     href: '/dashboard/admin/entries',      icon: FileText,  roles: [UserRole.ADMIN] },
   { name: 'Pending',     href: '/dashboard/admin/pending',      icon: UserPlus,  roles: [UserRole.ADMIN] },
   { name: 'Rankings',    href: '/dashboard/admin/rankings',     icon: Trophy,    roles: [UserRole.ADMIN] },
-  { name: 'Top Earners', href: '/dashboard/admin/top-earners',  icon: Trophy,    roles: [UserRole.ADMIN] },
+  { name: 'Top Earners', href: '/dashboard/admin/topEarners',  icon: Trophy,    roles: [UserRole.ADMIN] },
 
   // Superadmin routes
   { name: 'Overview',    href: '/dashboard/superadmin',                icon: BarChart3, roles: [UserRole.SUPERADMIN] },
@@ -58,7 +58,7 @@ const SUPERADMIN_SECTIONS = [
       '/dashboard/admin/entries',
       '/dashboard/admin/pending',
       '/dashboard/admin/rankings',
-      '/dashboard/superadmin/top-earners',
+      '/dashboard/superadmin/topEarners',
     ],
   },
   {
