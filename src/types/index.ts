@@ -150,8 +150,22 @@ export interface Profile {
   state: string;
   country: string;
   accountBearerName: string;
-  defaultWorker: string | User;
+  defaultWorker?: string | User | null;
   secondWorker?: string | User | null;
+  isActive: boolean;
+
+  /**
+   * Custom admin cut percentage for this account (0–100).
+   * null/undefined = use the platform default (25%).
+   */
+  adminCutPercentage?: number | null;
+
+  /**
+   * When true this account is excluded from admin earnings calculations.
+   * Workers still get paid normally.
+   */
+  isTerminated?: boolean;
+
   createdAt: string;
   updatedAt: string;
 }

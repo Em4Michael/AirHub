@@ -15,6 +15,7 @@ import {
   Plus, Search, Trash2, Eye, Clock, Award,
   MapPin, User as UserIcon, Building, ChevronLeft, ChevronRight,
   AlertTriangle, Edit, DollarSign, Wallet, TrendingUp, Users, BarChart2,
+  Save, X,
 } from 'lucide-react';
 import { Input } from '@/components/ui/Input';
 import {
@@ -32,9 +33,17 @@ interface ProfileStats {
 }
 interface AssignWorkerState { profile: Profile; defaultWorkerId: string; secondWorkerId: string; }
 
+interface EditProfileState {
+  fullName: string;
+  email: string;
+  state: string;
+  country: string;
+  accountBearerName: string;
+}
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-const RATE_PER_HOUR = 2000; // ₦/hr — adjust to match your benchmark rate
+const RATE_PER_HOUR = 2000;
 
 function calcStats(entries: Entry[]): PeriodStats {
   const approved = entries.filter((e) => e.adminApproved);
@@ -82,6 +91,10 @@ export default function AdminProfilesPage() {
   const [assignWorker, setAssignWorker] = useState<AssignWorkerState | null>(null);
   const [assigningWorker, setAssigningWorker] = useState(false);
 
+  // ── Edit profile state ───────────────────────────────────────────────────
+  const [editProfile, setEditProfile] = useState<{ profile: Profile; fields: EditProfileState } | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
+
   useEffect(() => { fetchProfiles(); fetchWorkers(); }, [page]);
 
   const fetchProfiles = async () => {
@@ -128,6 +141,67 @@ export default function AdminProfilesPage() {
     } finally { setLoadingDetails(false); }
   };
 
+  // ── Open edit modal ────────────────────────────────────────────────────────
+  const openEditModal = (profile: Profile, e?: React.MouseEvent) => {
+    e?.stopPropagation();
+    setEditProfile({
+      profile,
+      fields: {
+        fullName:          profile.fullName          ?? '',
+        email:             profile.email             ?? '',
+        state:             profile.state             ?? '',
+        country:           profile.country           ?? '',
+        accountBearerName: profile.accountBearerName ?? '',
+      },
+    });
+  };
+
+  const handleEditSave = async () => {
+    if (!editProfile) return;
+    const { fullName, email, state, country, accountBearerName } = editProfile.fields;
+    if (!fullName.trim()) { setError('Full name is required'); return; }
+    if (!email.trim())    { setError('Email is required'); return; }
+
+    setSavingEdit(true);
+    setError('');
+    try {
+      const res = await adminApi.updateProfile(editProfile.profile._id, {
+        fullName:          fullName.trim(),
+        email:             email.trim(),
+        state:             state.trim(),
+        country:           country.trim(),
+        accountBearerName: accountBearerName.trim(),
+      } as Partial<Profile>);
+
+      if (res.success) {
+        // Update local state so the card refreshes immediately
+        setProfiles((prev) =>
+          prev.map((p) =>
+            p._id === editProfile.profile._id
+              ? { ...p, fullName: fullName.trim(), email: email.trim(), state: state.trim(), country: country.trim(), accountBearerName: accountBearerName.trim() }
+              : p
+          )
+        );
+        // Also update the detail modal if it's open for this profile
+        if (selectedProfile?.profile._id === editProfile.profile._id) {
+          setSelectedProfile((prev: any) => ({
+            ...prev,
+            profile: { ...prev.profile, fullName: fullName.trim(), email: email.trim(), state: state.trim(), country: country.trim(), accountBearerName: accountBearerName.trim() },
+          }));
+        }
+        setSuccess('Profile updated successfully');
+        setEditProfile(null);
+        setTimeout(() => setSuccess(''), 3000);
+      } else {
+        setError(res.message || 'Failed to update profile');
+      }
+    } catch (err: any) {
+      setError(err?.response?.data?.message || 'Failed to update profile');
+    } finally {
+      setSavingEdit(false);
+    }
+  };
+
   const openAssignModal = (profile: Profile) => {
     const getId = (w: string | User | null | undefined) =>
       !w ? '' : typeof w === 'string' ? w : w._id;
@@ -143,14 +217,38 @@ export default function AdminProfilesPage() {
     setAssigningWorker(true);
     setError('');
     try {
-      await adminApi.reassignWorker({ profileId: assignWorker.profile._id, newWorkerId: assignWorker.defaultWorkerId, permanent: true, slot: 'default' });
-      await adminApi.reassignWorker({ profileId: assignWorker.profile._id, newWorkerId: assignWorker.secondWorkerId, permanent: true, slot: 'second' });
-      setSuccess('Workers assigned successfully');
+      // Primary slot: assign worker or clear to null
+      if (assignWorker.defaultWorkerId) {
+        await adminApi.reassignWorker({
+          profileId: assignWorker.profile._id,
+          newWorkerId: assignWorker.defaultWorkerId,
+          permanent: true,
+          slot: 'default',
+        });
+      } else {
+        await adminApi.updateProfile(assignWorker.profile._id, { defaultWorker: null } as any);
+      }
+
+      // Secondary slot: assign worker or clear to null
+      if (assignWorker.secondWorkerId) {
+        await adminApi.reassignWorker({
+          profileId: assignWorker.profile._id,
+          newWorkerId: assignWorker.secondWorkerId,
+          permanent: true,
+          slot: 'second',
+        });
+      } else {
+        await adminApi.updateProfile(assignWorker.profile._id, { secondWorker: null } as any);
+      }
+
+      setSuccess('Workers updated successfully');
       setAssignWorker(null);
       fetchProfiles();
-      if (selectedProfile?.profile._id === assignWorker.profile._id) fetchProfileDetails(assignWorker.profile._id);
+      if (selectedProfile?.profile._id === assignWorker.profile._id) {
+        fetchProfileDetails(assignWorker.profile._id);
+      }
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to assign workers');
+      setError(err.response?.data?.message || 'Failed to update workers');
     } finally { setAssigningWorker(false); }
   };
 
@@ -181,8 +279,6 @@ export default function AdminProfilesPage() {
     return <div className="flex items-center justify-center h-96"><Spinner size="lg" /></div>;
   }
 
-  // ── Stat box sub-component ────────────────────────────────────────────────
-
   const StatBox = ({
     icon: Icon, label, value, colorClass,
   }: { icon: React.ElementType; label: string; value: string; colorClass: string }) => (
@@ -192,6 +288,14 @@ export default function AdminProfilesPage() {
       <p className="text-xs mt-0.5" style={{ color: 'var(--text-muted)' }}>{label}</p>
     </div>
   );
+
+  // Shared label + input style for the edit form
+  const fieldClass = "w-full px-3 py-2.5 rounded-xl border text-sm";
+  const fieldStyle = {
+    backgroundColor: 'var(--bg-tertiary)',
+    borderColor:     'var(--border-color)',
+    color:           'var(--text-primary)',
+  };
 
   return (
     <div className="space-y-6">
@@ -210,7 +314,7 @@ export default function AdminProfilesPage() {
         </div>
       </div>
 
-      {error && <Alert type="error" message={error} onClose={() => setError('')} />}
+      {error   && <Alert type="error"   message={error}   onClose={() => setError('')} />}
       {success && <Alert type="success" message={success} onClose={() => setSuccess('')} />}
 
       {/* Profiles Grid */}
@@ -227,7 +331,7 @@ export default function AdminProfilesPage() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {filteredProfiles.map((profile) => {
-            const primaryName = getWorkerName(profile.defaultWorker as any);
+            const primaryName   = getWorkerName(profile.defaultWorker as any);
             const secondaryName = getWorkerName(profile.secondWorker as any);
             return (
               <Card key={profile._id} className="cursor-pointer transition-all hover:shadow-lg"
@@ -245,8 +349,16 @@ export default function AdminProfilesPage() {
                       </div>
                     </div>
                     <div className="flex gap-1 flex-shrink-0">
+                      {/* ── Edit button ── */}
+                      <button
+                        onClick={(e) => openEditModal(profile, e)}
+                        className="p-2 rounded-lg text-blue-500 hover:bg-blue-50 transition-colors"
+                        title="Edit Profile"
+                      >
+                        <Edit className="w-4 h-4" />
+                      </button>
                       <button onClick={(e) => { e.stopPropagation(); openAssignModal(profile); }}
-                        className="p-2 rounded-lg text-blue-500 hover:bg-blue-50 transition-colors" title="Assign Workers">
+                        className="p-2 rounded-lg text-purple-500 hover:bg-purple-50 transition-colors" title="Assign Workers">
                         <Users className="w-4 h-4" />
                       </button>
                       <button onClick={(e) => { e.stopPropagation(); setDeleteConfirm(profile); }}
@@ -269,7 +381,7 @@ export default function AdminProfilesPage() {
                       <div className="text-xs" style={{ color: 'var(--text-muted)' }}>
                         {primaryName || secondaryName ? (
                           <>
-                            {primaryName && <span className="block">{primaryName} (primary)</span>}
+                            {primaryName   && <span className="block">{primaryName} (primary)</span>}
                             {secondaryName && <span className="block">{secondaryName} (secondary)</span>}
                           </>
                         ) : <span>No workers assigned</span>}
@@ -305,8 +417,106 @@ export default function AdminProfilesPage() {
         </div>
       )}
 
+      {/* ── Edit Profile Modal ────────────────────────────────────────────── */}
+      <Modal
+        isOpen={!!editProfile}
+        onClose={() => { setEditProfile(null); setError(''); }}
+        title="Edit Profile"
+        size="sm"
+      >
+        {editProfile && (
+          <div className="space-y-4">
+            <p className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+              Update the details for <strong style={{ color: 'var(--text-primary)' }}>{editProfile.profile.fullName}</strong>.
+            </p>
+
+            {/* Full Name */}
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                Account / Full Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                className={fieldClass}
+                style={fieldStyle}
+                value={editProfile.fields.fullName}
+                onChange={(e) => setEditProfile((s) => s && ({ ...s, fields: { ...s.fields, fullName: e.target.value } }))}
+                placeholder="e.g. John Doe"
+              />
+            </div>
+
+            {/* Email */}
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                Email <span className="text-red-500">*</span>
+              </label>
+              <input
+                type="email"
+                className={fieldClass}
+                style={fieldStyle}
+                value={editProfile.fields.email}
+                onChange={(e) => setEditProfile((s) => s && ({ ...s, fields: { ...s.fields, email: e.target.value } }))}
+                placeholder="email@example.com"
+              />
+            </div>
+
+            {/* Account Bearer Name */}
+            <div>
+              <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>
+                Account Bearer Name <span className="text-red-500">*</span>
+              </label>
+              <input
+                className={fieldClass}
+                style={fieldStyle}
+                value={editProfile.fields.accountBearerName}
+                onChange={(e) => setEditProfile((s) => s && ({ ...s, fields: { ...s.fields, accountBearerName: e.target.value } }))}
+                placeholder="e.g. Jane Smith"
+              />
+            </div>
+
+            {/* State + Country side by side */}
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>State</label>
+                <input
+                  className={fieldClass}
+                  style={fieldStyle}
+                  value={editProfile.fields.state}
+                  onChange={(e) => setEditProfile((s) => s && ({ ...s, fields: { ...s.fields, state: e.target.value } }))}
+                  placeholder="e.g. Lagos"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold mb-1.5" style={{ color: 'var(--text-secondary)' }}>Country</label>
+                <input
+                  className={fieldClass}
+                  style={fieldStyle}
+                  value={editProfile.fields.country}
+                  onChange={(e) => setEditProfile((s) => s && ({ ...s, fields: { ...s.fields, country: e.target.value } }))}
+                  placeholder="e.g. Nigeria"
+                />
+              </div>
+            </div>
+
+            {error && (
+              <p className="text-sm text-red-500 flex items-center gap-1">
+                <AlertTriangle className="w-4 h-4 flex-shrink-0" />{error}
+              </p>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <Button onClick={handleEditSave} isLoading={savingEdit} className="flex-1">
+                <Save className="w-4 h-4" />Save Changes
+              </Button>
+              <Button variant="outline" onClick={() => { setEditProfile(null); setError(''); }} className="flex-1">
+                <X className="w-4 h-4" />Cancel
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
       {/* ── Profile Details Modal ─────────────────────────────────────────── */}
-      <Modal isOpen={!!selectedProfile && !deleteConfirm && !assignWorker}
+      <Modal isOpen={!!selectedProfile && !deleteConfirm && !assignWorker && !editProfile}
         onClose={() => { setSelectedProfile(null); setProfileStats(null); }}
         title="Profile Details" size="xl">
         {loadingDetails ? (
@@ -326,11 +536,22 @@ export default function AdminProfilesPage() {
                   {selectedProfile.profile.state}, {selectedProfile.profile.country} · {selectedProfile.profile.accountBearerName}
                 </p>
               </div>
+              {/* Edit button inside detail modal */}
+              <button
+                onClick={() => openEditModal(selectedProfile.profile)}
+                className="p-2.5 rounded-xl flex items-center gap-1.5 text-sm font-semibold border transition-colors"
+                style={{
+                  borderColor:     'var(--border-color)',
+                  color:           'var(--text-secondary)',
+                  backgroundColor: 'var(--bg-secondary)',
+                }}
+              >
+                <Edit className="w-4 h-4" />Edit
+              </button>
             </div>
 
             {profileStats && (
               <>
-                {/* Weekly + Lifetime stat boxes */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <Card>
                     <CardHeader className="pb-3">
@@ -340,9 +561,9 @@ export default function AdminProfilesPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="grid grid-cols-2 gap-3">
-                        <StatBox icon={Clock} label="Hours" value={formatTime(profileStats.weekly.hours)} colorClass="text-blue-500" />
-                        <StatBox icon={Award} label="Avg Quality" value={formatPercentage(profileStats.weekly.quality)} colorClass="text-green-500" />
-                        <StatBox icon={BarChart2} label="Entries" value={String(profileStats.weekly.entries)} colorClass="text-purple-500" />
+                        <StatBox icon={Clock}     label="Hours"        value={formatTime(profileStats.weekly.hours)}        colorClass="text-blue-500" />
+                        <StatBox icon={Award}     label="Avg Quality"  value={formatPercentage(profileStats.weekly.quality)} colorClass="text-green-500" />
+                        <StatBox icon={BarChart2} label="Entries"      value={String(profileStats.weekly.entries)}           colorClass="text-purple-500" />
                         <StatBox icon={DollarSign} label="Est. Earnings" value={formatCurrency(profileStats.weekly.earnings)} colorClass="text-emerald-500" />
                       </div>
                     </CardContent>
@@ -356,16 +577,15 @@ export default function AdminProfilesPage() {
                     </CardHeader>
                     <CardContent>
                       <div className="grid grid-cols-2 gap-3">
-                        <StatBox icon={Clock} label="Total Hours" value={formatTime(profileStats.lifetime.hours)} colorClass="text-blue-500" />
-                        <StatBox icon={Award} label="Avg Quality" value={formatPercentage(profileStats.lifetime.quality)} colorClass="text-green-500" />
-                        <StatBox icon={BarChart2} label="Total Entries" value={String(profileStats.lifetime.entries)} colorClass="text-purple-500" />
-                        <StatBox icon={DollarSign} label="Est. Earnings" value={formatCurrency(profileStats.lifetime.earnings)} colorClass="text-emerald-500" />
+                        <StatBox icon={Clock}     label="Total Hours"    value={formatTime(profileStats.lifetime.hours)}        colorClass="text-blue-500" />
+                        <StatBox icon={Award}     label="Avg Quality"    value={formatPercentage(profileStats.lifetime.quality)} colorClass="text-green-500" />
+                        <StatBox icon={BarChart2} label="Total Entries"  value={String(profileStats.lifetime.entries)}           colorClass="text-purple-500" />
+                        <StatBox icon={DollarSign} label="Est. Earnings" value={formatCurrency(profileStats.lifetime.earnings)}  colorClass="text-emerald-500" />
                       </div>
                     </CardContent>
                   </Card>
                 </div>
 
-                {/* Performance graph */}
                 {profileStats.chartData.length > 1 && (
                   <Card>
                     <CardHeader className="pb-3">
@@ -407,21 +627,13 @@ export default function AdminProfilesPage() {
                             tickFormatter={(v) => { const d = new Date(v); return `${d.getMonth() + 1}/${d.getDate()}`; }} />
                           <YAxis stroke="var(--text-secondary)" style={{ fontSize: '11px' }} />
                           <Tooltip
-                            contentStyle={{
-                              backgroundColor: 'var(--bg-secondary)',
-                              border: '1px solid var(--border-color)',
-                              borderRadius: '0.5rem', fontSize: '12px',
-                            }}
-                            formatter={(value: any) =>
-                              activeChart === 'hours' ? [`${value}h`, 'Hours'] : [`${value}%`, 'Quality']
-                            }
+                            contentStyle={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '0.5rem', fontSize: '12px' }}
+                            formatter={(value: any) => activeChart === 'hours' ? [`${value}h`, 'Hours'] : [`${value}%`, 'Quality']}
                           />
                           {activeChart === 'hours' ? (
-                            <Area type="monotone" dataKey="hours" stroke="#3b82f6" strokeWidth={2}
-                              fill="url(#gradHours)" dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                            <Area type="monotone" dataKey="hours"   stroke="#3b82f6" strokeWidth={2} fill="url(#gradHours)"   dot={{ r: 3 }} activeDot={{ r: 5 }} />
                           ) : (
-                            <Area type="monotone" dataKey="quality" stroke="#10b981" strokeWidth={2}
-                              fill="url(#gradQuality)" dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                            <Area type="monotone" dataKey="quality" stroke="#10b981" strokeWidth={2} fill="url(#gradQuality)" dot={{ r: 3 }} activeDot={{ r: 5 }} />
                           )}
                         </AreaChart>
                       </ResponsiveContainer>
@@ -516,7 +728,7 @@ export default function AdminProfilesPage() {
       {/* ── Assign Workers Modal ──────────────────────────────────────────── */}
       <Modal isOpen={!!assignWorker} onClose={() => setAssignWorker(null)} title="Assign Workers" size="sm">
         {assignWorker && (() => {
-          const primaryOptions = workers.filter((w) => w._id !== assignWorker.secondWorkerId);
+          const primaryOptions   = workers.filter((w) => w._id !== assignWorker.secondWorkerId);
           const secondaryOptions = workers.filter((w) => w._id !== assignWorker.defaultWorkerId);
           const sameError = assignWorker.defaultWorkerId && assignWorker.secondWorkerId &&
             assignWorker.defaultWorkerId === assignWorker.secondWorkerId;

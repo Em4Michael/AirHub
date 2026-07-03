@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useCallback } from 'react';
+import Link from 'next/link';
 import { apiClient } from '@/lib/api/client';
 import { useAuth } from '@/context/AuthContext';
 import { UserRole } from '@/types';
@@ -106,7 +107,6 @@ function YourPositionCard({
   userName:     string;
 }) {
   if (isAdmin && !entry) {
-    // Admin/superadmin observing — they are not in the earner list
     return (
       <div
         className="rounded-2xl p-4 flex items-center gap-4"
@@ -134,7 +134,6 @@ function YourPositionCard({
   }
 
   if (!entry) {
-    // Worker with no approved entries this week
     return (
       <div
         className="rounded-2xl p-4 flex items-center gap-4"
@@ -175,7 +174,6 @@ function YourPositionCard({
         boxShadow: '0 4px 24px color-mix(in srgb, var(--accent-color) 20%, transparent)',
       }}
     >
-      {/* "YOUR RANKING" label */}
       <p
         className="text-[10px] font-black uppercase tracking-widest mb-3"
         style={{ color: 'var(--accent-color)' }}
@@ -184,7 +182,6 @@ function YourPositionCard({
       </p>
 
       <div className="flex items-center gap-4">
-        {/* Big rank number */}
         <div
           className="w-16 h-16 rounded-2xl flex flex-col items-center justify-center flex-shrink-0"
           style={{
@@ -200,7 +197,6 @@ function YourPositionCard({
           )}
         </div>
 
-        {/* Stats */}
         <div className="flex-1 min-w-0">
           <p className="font-black text-lg truncate" style={{ color: 'var(--text-primary)' }}>
             {userName}
@@ -214,10 +210,8 @@ function YourPositionCard({
             </span>
           </div>
 
-          {/* Progress bar: position relative to all workers */}
           <div className="mt-3">
             <div className="flex items-center justify-between mb-1.5">
-              {/* "Ranked X of Y" — the core ask */}
               <span
                 className="text-xs font-black"
                 style={{ color: 'var(--text-primary)' }}
@@ -227,7 +221,6 @@ function YourPositionCard({
                 <span style={{ color: 'var(--text-muted)' }}> of {totalWorkers}</span>
               </span>
 
-              {/* Top N% pill */}
               <span
                 className="text-[10px] font-bold px-2 py-0.5 rounded-full"
                 style={{
@@ -259,9 +252,27 @@ function YourPositionCard({
 
 // ─── Podium card (top 3) ──────────────────────────────────────────────────────
 
-function PodiumCard({ earner, isMe }: { earner: Earner; isMe: boolean }) {
+function PodiumCard({
+  earner,
+  isMe,
+  isAdmin,
+}: {
+  earner: Earner;
+  isMe: boolean;
+  isAdmin: boolean;
+}) {
   const medal   = MEDAL[earner.rank];
   const offsets = { 1: 'pb-0', 2: 'pb-5', 3: 'pb-9' } as Record<number, string>;
+
+  const nameEl = (
+    <p
+      className="font-bold text-sm truncate"
+      style={{ color: 'var(--text-primary)' }}
+      title={earner.name}
+    >
+      {earner.name.split(' ')[0]}
+    </p>
+  );
 
   return (
     <div className={`flex flex-col items-center gap-2 flex-1 min-w-0 ${offsets[earner.rank] ?? 'pb-9'}`}>
@@ -286,13 +297,18 @@ function PodiumCard({ earner, isMe }: { earner: Earner; isMe: boolean }) {
           </span>
         )}
 
-        <p
-          className="font-bold text-sm truncate"
-          style={{ color: 'var(--text-primary)' }}
-          title={earner.name}
-        >
-          {earner.name.split(' ')[0]}
-        </p>
+        {/* Clickable name for admins */}
+        {isAdmin && !isMe ? (
+          <Link
+            href={`/dashboard/admin/users/${earner.userId}`}
+            className="hover:underline"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            {nameEl}
+          </Link>
+        ) : (
+          nameEl
+        )}
 
         <p className="text-[11px] mt-0.5" style={{ color: 'var(--text-muted)' }}>
           {earner.hours.toFixed(1)}h
@@ -315,7 +331,15 @@ function PodiumCard({ earner, isMe }: { earner: Earner; isMe: boolean }) {
 
 // ─── Row (rank 4+) ────────────────────────────────────────────────────────────
 
-function EarnerRow({ earner, isMe }: { earner: Earner; isMe: boolean }) {
+function EarnerRow({
+  earner,
+  isMe,
+  isAdmin,
+}: {
+  earner: Earner;
+  isMe: boolean;
+  isAdmin: boolean;
+}) {
   return (
     <div
       className="flex items-center gap-3 px-4 py-3 rounded-xl"
@@ -337,9 +361,20 @@ function EarnerRow({ earner, isMe }: { earner: Earner; isMe: boolean }) {
 
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2">
-          <p className="font-semibold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
-            {earner.name}
-          </p>
+          {/* Clickable for admin; plain text for self */}
+          {isAdmin && !isMe ? (
+            <Link
+              href={`/dashboard/admin/users/${earner.userId}`}
+              className="font-semibold text-sm truncate hover:underline"
+              style={{ color: 'var(--text-primary)' }}
+            >
+              {earner.name}
+            </Link>
+          ) : (
+            <p className="font-semibold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+              {earner.name}
+            </p>
+          )}
           {isMe && (
             <span
               className="text-[9px] font-black px-1.5 py-0.5 rounded-full flex-shrink-0"
@@ -372,7 +407,6 @@ export default function TopEarnersPage() {
   const isAdmin =
     user?.role === UserRole.ADMIN || user?.role === UserRole.SUPERADMIN;
 
-  // Admin/superadmin call /admin/top-earners; workers call /user/top-earners
   const apiBase = isAdmin ? '/admin/top-earners' : '/user/top-earners';
 
   const [data,    setData]    = useState<TopEarnersData | null>(null);
@@ -392,7 +426,6 @@ export default function TopEarnersPage() {
       if (body.success && body.data) {
         setData(body.data);
         if (body.data.availableWeeks?.length && weekStart === undefined) {
-          // Only overwrite the week list on initial load
           setWeeks(body.data.availableWeeks);
         }
       } else {
@@ -407,7 +440,7 @@ export default function TopEarnersPage() {
 
   useEffect(() => { fetchEarners(); }, [fetchEarners]);
 
-  const currentMeta = weeks[weekIdx];
+  const currentMeta  = weeks[weekIdx];
   const isCurrentWeek = weekIdx === 0;
 
   const goBack = () => {
@@ -521,12 +554,7 @@ export default function TopEarnersPage() {
 
       {!loading && !error && data && (
         <>
-          {/* ── YOUR POSITION — always first, always visible ─────────────────── */}
-          {/*
-           * totalWorkers = data.earners.length (the actual number of ranked
-           * workers this week). This is the authoritative count used everywhere:
-           * the "Xth of Y" label, the progress bar percentage, and the stats strip.
-           */}
+          {/* ── YOUR POSITION ────────────────────────────────────────────────── */}
           <YourPositionCard
             entry={meEntry}
             totalWorkers={data.earners.length}
@@ -560,7 +588,6 @@ export default function TopEarnersPage() {
             <>
               {/* ── Stats strip ─────────────────────────────────────────────── */}
               <div className="grid grid-cols-3 gap-3">
-                {/* Ranked card — custom render for position display */}
                 <div
                   className="rounded-2xl p-4 text-center"
                   style={{
@@ -580,7 +607,6 @@ export default function TopEarnersPage() {
                   </div>
                   <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Ranked</p>
                   {meEntry ? (
-                    // Worker with a rank — show "5 of 27"
                     <div className="flex items-baseline justify-center gap-0.5 mt-0.5">
                       <span
                         className="text-base font-black tabular-nums leading-none"
@@ -596,7 +622,6 @@ export default function TopEarnersPage() {
                       </span>
                     </div>
                   ) : (
-                    // Admin or worker with no entries — show total
                     <p
                       className="text-sm font-bold mt-0.5 tabular-nums"
                       style={{ color: 'var(--text-primary)' }}
@@ -611,7 +636,6 @@ export default function TopEarnersPage() {
                   )}
                 </div>
 
-                {/* Total Hours */}
                 <div
                   className="rounded-2xl p-4 text-center"
                   style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}
@@ -628,7 +652,6 @@ export default function TopEarnersPage() {
                   </p>
                 </div>
 
-                {/* Top Earning */}
                 <div
                   className="rounded-2xl p-4 text-center"
                   style={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)' }}
@@ -659,7 +682,7 @@ export default function TopEarnersPage() {
                     {([ top3[1] ?? null, top3[0] ?? null, top3[2] ?? null ] as (Earner | null)[])
                       .map((e, i) =>
                         e ? (
-                          <PodiumCard key={e.userId} earner={e} isMe={e.isCurrentUser} />
+                          <PodiumCard key={e.userId} earner={e} isMe={e.isCurrentUser} isAdmin={isAdmin} />
                         ) : (
                           <div key={`empty-${i}`} className="flex-1" />
                         )
@@ -687,6 +710,7 @@ export default function TopEarnersPage() {
                         key={earner.userId}
                         earner={earner}
                         isMe={earner.isCurrentUser}
+                        isAdmin={isAdmin}
                       />
                     ))}
                   </div>
