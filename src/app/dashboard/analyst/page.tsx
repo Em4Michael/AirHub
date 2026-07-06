@@ -176,8 +176,15 @@ function MonitoringDashboard() {
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                       <XAxis dataKey="date" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} tickFormatter={(d) => String(d).slice(5)} />
                       <YAxis tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
-                      <Tooltip contentStyle={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '0.75rem', fontSize: 12 }}
-                        formatter={(v: any) => [`${v}h`, 'Hours']} />
+                    <Tooltip 
+  contentStyle={{ 
+    backgroundColor: 'var(--bg-secondary)', 
+    border: '1px solid var(--border-color)', 
+    borderRadius: '0.75rem', 
+    fontSize: 12 
+  }}
+  formatter={(value: any) => [`${value}h`, 'Hours']}
+/>
                       <Area type="monotone" dataKey="hours" stroke="var(--accent-color)" strokeWidth={2.5} fill="url(#opsFill)" />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -505,8 +512,19 @@ function PersonalDashboard() {
                 <CartesianGrid strokeDasharray="3 3" stroke="var(--border-color)" />
                 <XAxis dataKey="week" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
                 <YAxis tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
-                <Tooltip contentStyle={{ backgroundColor: 'var(--bg-secondary)', border: '1px solid var(--border-color)', borderRadius: '0.75rem', fontSize: 12 }}
-                  formatter={(v: any, n: string) => n === 'hours' ? [`${v}h`, 'Hours'] : [money(v), 'Earnings']} />
+                <Tooltip 
+  contentStyle={{ 
+    backgroundColor: 'var(--bg-secondary)', 
+    border: '1px solid var(--border-color)', 
+    borderRadius: '0.75rem', 
+    fontSize: 12 
+  }}
+  formatter={(value: any, name: string | undefined) => {
+    if (name === 'hours') return [`${value}h`, 'Hours'];
+    if (name === 'earnings') return [money(value), 'Earnings'];
+    return [value, name || 'Value'];   // fallback
+  }}
+/>
                 <Bar dataKey="hours" fill="var(--accent-color)" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>

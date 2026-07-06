@@ -453,6 +453,7 @@ export interface AnalystDashboard {
   payment?:        AnalystPayment | null;
 heldProfile?:    { _id: string; name: string; accountBearerName: string; claimedAt: string } | null;
  activeSession?:  AnalystSession | null;
+ maxHoursPerDay: number;
 }
 
 export interface AnalystEarner {
