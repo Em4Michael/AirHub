@@ -11,6 +11,7 @@ import {
   AccountStats,
   AccountListRow,
   AnalystProduction,
+  PaginatedResponse,
 } from '@/types';
 
 // ── Shared (user + admin) ─────────────────────────────────────────────────────
@@ -132,7 +133,7 @@ export const analystApi = {
   // Accounts list + per-account stats + global production
   getAccounts: async (params?: {
     page?: number; limit?: number; search?: string; status?: 'available' | 'claimed';
-  }): Promise<ApiResponse<AccountListRow[]>> => {
+  }): Promise<PaginatedResponse<AccountListRow>> => {
     const r = await apiClient.get('/analyst/admin/accounts', { params });
     return r.data;
   },
