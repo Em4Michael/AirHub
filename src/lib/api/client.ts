@@ -1,7 +1,7 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios';
 
 // Use live server — override with NEXT_PUBLIC_API_URL env var if needed
-const API_URL = process.env.NEXT_PUBLIC_API_URL ||  'https://airhub-server.onrender.com/api';
+const API_URL = process.env.NEXT_PUBLIC_API_URL ||  'https://airhub-server.onrender.com/api'; 
 
 'http://localhost:5000/api';
 
