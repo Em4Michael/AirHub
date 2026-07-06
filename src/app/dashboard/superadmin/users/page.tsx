@@ -26,9 +26,10 @@ const AVATAR_COLORS = [
   '#d97706', '#059669', '#0891b2', '#2563eb',
 ];
 const avatarColor = (name: string) =>
-  AVATAR_COLORS[name.charCodeAt(0) % AVATAR_COLORS.length];
+  AVATAR_COLORS[(name?.charCodeAt(0) || 0) % AVATAR_COLORS.length];
 
 const getUserInitials = (name: string) => {
+  if (!name) return '?';
   const parts = name.trim().split(' ');
   return parts.length >= 2
     ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
@@ -44,6 +45,24 @@ const Avatar = ({ name }: { name: string }) => (
     {getUserInitials(name)}
   </div>
 );
+
+/**
+ * The backend stores access state as two booleans (isActive, isApproved) and
+ * does NOT send a `status` string. The UI, however, keys every action button
+ * off `user.status`. Without this normalizer the Promote / Revoke / Restore
+ * buttons never render because `user.status` is always undefined.
+ *
+ * Derive a canonical status from whatever the server sent:
+ *   - revoked : access has been pulled (inactive OR unapproved after having been active)
+ *   - pending : awaiting first approval
+ *   - approved: active + approved
+ */
+const deriveStatus = (u: User): 'approved' | 'pending' | 'revoked' => {
+  if (u.status) return u.status as any; // trust an explicit server status if present
+  if (u.isActive === false) return 'revoked';
+  if (u.isApproved) return 'approved';
+  return 'pending';
+};
 
 export default function SuperadminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
@@ -62,7 +81,7 @@ export default function SuperadminUsersPage() {
   const fetchUsers = async (attempt = 1) => {
     try {
       setLoading(true);
-      setError('');
+      if (attempt === 1) setError('');
       if (attempt > 1) setError(`Server is waking up… retrying (${attempt}/3)`);
 
       const response = await adminApi.getAllUsers(page, PAGE_SIZE);
@@ -71,7 +90,9 @@ export default function SuperadminUsersPage() {
         const flat = Array.isArray(response.data)
           ? (response.data.flat(Infinity) as User[])
           : [];
-        setUsers(flat);
+        // Normalize status so action buttons render correctly
+        const normalized = flat.map((u) => ({ ...u, status: deriveStatus(u) }));
+        setUsers(normalized);
         if (response.pagination?.pages) setTotalPages(response.pagination.pages);
         if (response.pagination?.total) setTotalUsers(response.pagination.total);
         setError('');
@@ -92,10 +113,23 @@ export default function SuperadminUsersPage() {
     }
   };
 
+  // Optimistically patch a single user in local state so the UI updates
+  // instantly, then re-fetch to stay authoritative.
+  const patchUser = (userId: string, changes: Partial<User>) => {
+    setUsers((prev) =>
+      prev.map((u) =>
+        u._id === userId ? { ...u, ...changes, status: deriveStatus({ ...u, ...changes }) } : u
+      )
+    );
+  };
+
   const handlePromote = async (userId: string) => {
     setActionLoading(userId);
+    setError('');
+    setSuccess('');
     try {
       await superadminApi.promoteToAdmin(userId);
+      patchUser(userId, { role: 'admin', isApproved: true } as Partial<User>);
       setSuccess('User promoted to admin');
       fetchUsers();
     } catch (err: any) {
@@ -105,8 +139,11 @@ export default function SuperadminUsersPage() {
 
   const handleDemote = async (userId: string) => {
     setActionLoading(userId);
+    setError('');
+    setSuccess('');
     try {
       await superadminApi.demoteToUser(userId);
+      patchUser(userId, { role: 'user' } as Partial<User>);
       setSuccess('Admin demoted to user');
       fetchUsers();
     } catch (err: any) {
@@ -116,8 +153,11 @@ export default function SuperadminUsersPage() {
 
   const handleRevoke = async (userId: string) => {
     setActionLoading(userId);
+    setError('');
+    setSuccess('');
     try {
       await superadminApi.revokeAccess(userId);
+      patchUser(userId, { isActive: false, isApproved: false } as Partial<User>);
       setSuccess('Access revoked');
       fetchUsers();
     } catch (err: any) {
@@ -127,8 +167,11 @@ export default function SuperadminUsersPage() {
 
   const handleRestore = async (userId: string) => {
     setActionLoading(userId);
+    setError('');
+    setSuccess('');
     try {
       await superadminApi.restoreAccess(userId);
+      patchUser(userId, { isActive: true, isApproved: true } as Partial<User>);
       setSuccess('Access restored');
       fetchUsers();
     } catch (err: any) {
@@ -138,8 +181,8 @@ export default function SuperadminUsersPage() {
 
   const filteredUsers = users.filter(
     (u) =>
-      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase()),
+      (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (u.email || '').toLowerCase().includes(searchQuery.toLowerCase()),
   );
 
   const getStatusVariant = (status: string) => {
@@ -159,36 +202,47 @@ export default function SuperadminUsersPage() {
     }
   };
 
-  const ActionButtons = ({ user }: { user: User }) => {
-    const busy = actionLoading === user._id;
-    if (user.role === 'superadmin') {
-      return <span className="text-xs" style={{ color: 'var(--text-muted)' }}>—</span>;
-    }
-    return (
-      <div className="flex items-center gap-1 flex-wrap">
-        {user.role === 'user' && (user.status === 'approved' || user.isApproved) && (
-          <Button size="sm" variant="outline" onClick={() => handlePromote(user._id)} isLoading={busy} title="Promote to Admin">
-            <ArrowUp className="w-3 h-3" />
-          </Button>
-        )}
-        {user.role === 'admin' && (
-          <Button size="sm" variant="outline" onClick={() => handleDemote(user._id)} isLoading={busy} title="Demote to User">
-            <ArrowDown className="w-3 h-3" />
-          </Button>
-        )}
-        {user.status === 'approved' && (
-          <Button size="sm" variant="danger" onClick={() => handleRevoke(user._id)} isLoading={busy} title="Revoke Access">
-            <ShieldOff className="w-3 h-3" />
-          </Button>
-        )}
-        {user.status === 'revoked' && (
-          <Button size="sm" variant="success" onClick={() => handleRestore(user._id)} isLoading={busy} title="Restore Access">
-            <Shield className="w-3 h-3" />
-          </Button>
-        )}
-      </div>
-    );
-  };
+const ActionButtons = ({ user }: { user: User }) => {
+  const busy = actionLoading === user._id;
+  const role = String(user.role || 'user').toLowerCase();
+  const status = deriveStatus(user);
+
+  if (role === 'superadmin') {
+    return <span className="text-xs" style={{ color: 'var(--text-muted)' }}>—</span>;
+  }
+
+  return (
+    <div className="flex items-center gap-1 flex-wrap">
+      {/* Promote: any regular user that isn't revoked (pending is fine) */}
+      {role === 'user' && status !== 'revoked' && (
+        <Button size="sm" variant="outline" onClick={() => handlePromote(user._id)} isLoading={busy} title="Promote to Admin">
+          <ArrowUp className="w-3 h-3" />
+        </Button>
+      )}
+
+      {/* Demote: any admin */}
+      {role === 'admin' && (
+        <Button size="sm" variant="outline" onClick={() => handleDemote(user._id)} isLoading={busy} title="Demote to User">
+          <ArrowDown className="w-3 h-3" />
+        </Button>
+      )}
+
+      {/* Revoke: anyone not already revoked (covers pending AND approved) */}
+      {status !== 'revoked' && (
+        <Button size="sm" variant="danger" onClick={() => handleRevoke(user._id)} isLoading={busy} title="Revoke Access">
+          <ShieldOff className="w-3 h-3" />
+        </Button>
+      )}
+
+      {/* Restore: anyone revoked */}
+      {status === 'revoked' && (
+        <Button size="sm" variant="success" onClick={() => handleRestore(user._id)} isLoading={busy} title="Restore Access">
+          <Shield className="w-3 h-3" />
+        </Button>
+      )}
+    </div>
+  );
+};
 
   const startRecord = (page - 1) * PAGE_SIZE + 1;
   const endRecord   = Math.min(page * PAGE_SIZE, totalUsers);
@@ -282,7 +336,7 @@ export default function SuperadminUsersPage() {
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Badge variant={getRoleVariant(user.role) as any}>{user.role.toUpperCase()}</Badge>
-              <Badge variant={getStatusVariant(user.status) as any}>{user.status}</Badge>
+              <Badge variant={getStatusVariant(deriveStatus(user)) as any}>{deriveStatus(user)}</Badge>
               {user.bankDetails ? <Badge variant="success">Bank added</Badge> : <Badge variant="warning">No bank</Badge>}
               <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>{formatDate(user.createdAt)}</span>
             </div>
@@ -323,7 +377,7 @@ export default function SuperadminUsersPage() {
                       </div>
                     </td>
                     <td className="px-4 py-4"><Badge variant={getRoleVariant(user.role) as any}>{user.role.toUpperCase()}</Badge></td>
-                    <td className="px-4 py-4"><Badge variant={getStatusVariant(user.status) as any}>{user.status}</Badge></td>
+                    <td className="px-4 py-4"><Badge variant={getStatusVariant(deriveStatus(user)) as any}>{deriveStatus(user)}</Badge></td>
                     <td className="px-4 py-4 text-sm" style={{ color: 'var(--text-secondary)' }}>{formatDate(user.createdAt)}</td>
                     <td className="px-4 py-4">{user.bankDetails ? <Badge variant="success">Added</Badge> : <Badge variant="warning">Missing</Badge>}</td>
                     <td className="px-4 py-4"><ActionButtons user={user} /></td>

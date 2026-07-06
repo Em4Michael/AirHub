@@ -8,11 +8,12 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Alert } from '@/components/ui/Alert';
 import { superadminApi } from '@/lib/api/superadmin.api';
 import { adminApi } from '@/lib/api/admin.api';
-import { formatTime, formatPercentage, formatDate, formatCurrency } from '@/lib/utils/format';
+import AdminEarningsSection from '@/components/layout/Adminearningssection';
+import { formatTime, formatPercentage, formatCurrency } from '@/lib/utils/format';
 import {
-  Users, Briefcase, FileText, TrendingUp, Trophy, Clock,
-  Award, UserCheck, CheckCircle, Plus, ArrowRight, Activity,
-  AlertTriangle, Star, Settings, Wallet, Shield, DollarSign, BarChart3,
+  Users, Briefcase, FileText, Trophy, Clock,
+  Award, UserCheck, ArrowRight, Activity,
+  Star, Settings, Wallet, Shield, DollarSign, BarChart3,
 } from 'lucide-react';
 
 interface WorkerRanking {
@@ -23,6 +24,7 @@ interface WorkerRanking {
   avgQuality: number;
   overallScore: number;
   entriesCount: number;
+  weeklyEarnings: number;
 }
 
 interface SystemStats {
@@ -36,8 +38,8 @@ interface SystemStats {
   activeBenchmarks: number;
   totalBonuses: number;
   totalAdmins: number;
-  weeklyEarnings: number;  
-  lifetimeEarnings: number; 
+  weeklyEarnings: number;
+  lifetimeEarnings: number;
 }
 
 export default function SuperadminDashboard() {
@@ -52,30 +54,37 @@ export default function SuperadminDashboard() {
 
   const fetchDashboardData = async () => {
     try {
-      const [systemStatsRes, workerStatsRes, rankingsRes] = await Promise.all([
+      setLoading(true);
+
+      const [systemStatsRes, workerStatsRes, rankingsRes] = await Promise.allSettled([
         superadminApi.getSystemStats(),
         adminApi.getWorkerStats(),
         adminApi.getRankedProfiles(),
       ]);
 
+      const sys  = systemStatsRes.status === 'fulfilled' ? systemStatsRes.value : null;
+      const work = workerStatsRes.status === 'fulfilled' ? workerStatsRes.value : null;
+
       const combinedStats: SystemStats = {
-        totalUsers: systemStatsRes.data?.totalUsers || workerStatsRes.data?.totalUsers || 0,
-        totalProfiles: workerStatsRes.data?.totalProfiles || 0,
-        pendingEntries: workerStatsRes.data?.pendingEntries || 0,
-        pendingUsers: workerStatsRes.data?.pendingUsers || 0,
-        activeWorkers: workerStatsRes.data?.activeWorkers || 0,
-        totalHoursThisWeek: workerStatsRes.data?.totalHoursThisWeek || 0,
-        avgQualityThisWeek: workerStatsRes.data?.avgQualityThisWeek || 0,
-        activeBenchmarks: systemStatsRes.data?.activeBenchmarks || 0,
-        totalBonuses: systemStatsRes.data?.totalBonuses || 0,
-        totalAdmins: systemStatsRes.data?.totalAdmins || 0,
-        weeklyEarnings: workerStatsRes.data?.weeklyEarnings || 0,   
-  lifetimeEarnings: workerStatsRes.data?.lifetimeEarnings || 0, 
+        totalUsers:         sys?.data?.totalUsers ?? work?.data?.totalUsers ?? 0,
+        totalProfiles:      work?.data?.totalProfiles ?? 0,
+        pendingEntries:     work?.data?.pendingEntries ?? 0,
+        pendingUsers:       work?.data?.pendingUsers ?? 0,
+        activeWorkers:      work?.data?.activeWorkers ?? 0,
+        totalHoursThisWeek: work?.data?.totalHoursThisWeek ?? 0,
+        avgQualityThisWeek: work?.data?.avgQualityThisWeek ?? 0,
+        activeBenchmarks:   sys?.data?.activeBenchmarks ?? 0,
+        totalBonuses:       sys?.data?.totalBonuses ?? 0,
+        totalAdmins:        sys?.data?.totalAdmins ?? 0,
+        weeklyEarnings:     work?.data?.weeklyEarnings ?? 0,
+        lifetimeEarnings:   work?.data?.lifetimeEarnings ?? 0,
       };
       setStats(combinedStats);
 
-      if (rankingsRes.success && rankingsRes.data) {
-        setRankings(rankingsRes.data);
+      if (rankingsRes.status === 'fulfilled' && rankingsRes.value.success && rankingsRes.value.data) {
+        const rankedData = (Array.isArray(rankingsRes.value.data) ? rankingsRes.value.data : [])
+          .map((worker: any) => ({ ...worker, weeklyEarnings: worker.weeklyEarnings || 0 }));
+        setRankings(rankedData);
       }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to load dashboard data');
@@ -126,7 +135,7 @@ export default function SuperadminDashboard() {
 
       {error && <Alert type="error" message={error} onClose={() => setError('')} />}
 
-      {/* System Stats */}
+      {/* System Stats (superadmin extras kept) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="hover:shadow-lg transition-shadow">
           <CardContent className="p-5">
@@ -137,7 +146,7 @@ export default function SuperadminDashboard() {
                   {stats?.totalUsers || 0}
                 </p>
                 <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-                  {stats?.totalAdmins || 0} admins
+                  {stats?.totalAdmins || 0} admins · {stats?.activeWorkers || 0} active
                 </p>
               </div>
               <div className="w-14 h-14 rounded-xl bg-blue-100 flex items-center justify-center">
@@ -199,52 +208,85 @@ export default function SuperadminDashboard() {
         </Card>
       </div>
 
-      {/* Earnings Overview */}
-<div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-  <Card>
-    <CardContent className="p-5">
-      <div className="flex items-center gap-4">
-        <div className="w-14 h-14 rounded-xl bg-emerald-100 flex items-center justify-center">
-          <DollarSign className="w-7 h-7 text-emerald-600" />
-        </div>
-        <div>
-          <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
-            Total Earnings This Week
-          </p>
-          <p className="text-3xl font-bold text-emerald-600">
-            {formatCurrency(stats?.weeklyEarnings || 0)}
-          </p>
-          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-            Across all approved entries
-          </p>
-        </div>
-      </div>
-    </CardContent>
-  </Card>
+      {/* Earnings & Performance Overview — matches admin's 4-card row */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-lg bg-emerald-100 flex items-center justify-center">
+                <DollarSign className="w-5 h-5 text-emerald-600" />
+              </div>
+              <div>
+                <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                  Earnings (This Week)
+                </p>
+                <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                  {formatCurrency(stats?.weeklyEarnings || 0)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-  <Card>
-    <CardContent className="p-5">
-      <div className="flex items-center gap-4">
-        <div className="w-14 h-14 rounded-xl bg-indigo-100 flex items-center justify-center">
-          <Wallet className="w-7 h-7 text-indigo-600" />
-        </div>
-        <div>
-          <p className="text-sm font-medium" style={{ color: 'var(--text-muted)' }}>
-            Lifetime Earnings
-          </p>
-          <p className="text-3xl font-bold text-indigo-600">
-            {formatCurrency(stats?.lifetimeEarnings || 0)}
-          </p>
-          <p className="text-xs mt-1" style={{ color: 'var(--text-muted)' }}>
-            All time, all workers
-          </p>
-        </div>
-      </div>
-    </CardContent>
-  </Card>
-</div>
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-lg bg-indigo-100 flex items-center justify-center">
+                <Wallet className="w-5 h-5 text-indigo-600" />
+              </div>
+              <div>
+                <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                  Lifetime Earnings
+                </p>
+                <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                  {formatCurrency(stats?.lifetimeEarnings || 0)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
-      {/* Operations Stats */}
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+                <Clock className="w-5 h-5 text-purple-600" />
+              </div>
+              <div>
+                <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                  Paid Hours (This Week)
+                </p>
+                <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                  {formatTime(stats?.totalHoursThisWeek || 0)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-5">
+            <div className="flex items-center gap-3 mb-2">
+              <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+                <Award className="w-5 h-5 text-green-600" />
+              </div>
+              <div>
+                <p className="text-xs font-medium" style={{ color: 'var(--text-muted)' }}>
+                  Avg Paid Quality
+                </p>
+                <p className="text-xl font-bold" style={{ color: 'var(--text-primary)' }}>
+                  {formatPercentage(stats?.avgQualityThisWeek || 0)}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Detailed earnings breakdown — same component the admin dashboard uses */}
+      <AdminEarningsSection />
+
+      {/* Operations Stats (superadmin extra kept) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <Card className="border-l-4 border-l-orange-500">
           <CardContent className="p-4">
@@ -302,11 +344,10 @@ export default function SuperadminDashboard() {
           </CardContent>
         </Card>
       </div>
-      
 
       {/* Quick Actions & Leaderboard */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Quick Actions */}
+        {/* System Actions (superadmin extra kept) */}
         <Card className="lg:col-span-1">
           <CardHeader className="pb-3">
             <CardTitle className="text-lg flex items-center gap-2">
@@ -407,13 +448,13 @@ export default function SuperadminDashboard() {
           </CardContent>
         </Card>
 
-        {/* Worker Leaderboard */}
+        {/* Worker Leaderboard — now shows paid earnings, matching admin */}
         <Card className="lg:col-span-2">
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Trophy className="w-5 h-5 text-yellow-500" />
-                Worker Leaderboard
+                Worker Leaderboard (Paid Earnings)
               </CardTitle>
               <Link
                 href="/superadmin/rankings"
@@ -429,6 +470,7 @@ export default function SuperadminDashboard() {
               <div className="text-center py-8" style={{ color: 'var(--text-muted)' }}>
                 <Trophy className="w-12 h-12 mx-auto mb-3 opacity-30" />
                 <p>No ranking data available yet</p>
+                <p className="text-sm mt-2">Workers will appear here once paid entries are processed</p>
               </div>
             ) : (
               <div className="space-y-3">
@@ -438,35 +480,48 @@ export default function SuperadminDashboard() {
                     className="flex items-center gap-4 p-3 rounded-xl transition-all hover:shadow-md"
                     style={{ backgroundColor: 'var(--bg-tertiary)' }}
                   >
+                    {/* Rank Badge */}
                     <div
                       className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold ${getRankBadgeColor(index)}`}
                     >
                       {index < 3 ? <Star className="w-5 h-5" /> : index + 1}
                     </div>
+
+                    {/* Worker Info */}
                     <div className="flex-1 min-w-0">
                       <p className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>
-                        {worker.name}
+                        {worker.name || 'Unknown Worker'}
                       </p>
                       <p className="text-sm truncate" style={{ color: 'var(--text-muted)' }}>
-                        {worker.email}
+                        {worker.email || 'N/A'}
                       </p>
                     </div>
-                    <div className="hidden sm:flex items-center gap-4 text-sm">
+
+                    {/* Stats — hours, quality, paid earnings */}
+                    <div className="hidden lg:flex items-center gap-4 text-sm">
                       <div className="text-center">
                         <p className="font-bold" style={{ color: 'var(--text-primary)' }}>
                           {formatTime(worker.totalTime)}
                         </p>
-                        <p style={{ color: 'var(--text-muted)' }}>Hours</p>
+                        <p style={{ color: 'var(--text-muted)' }} className="text-xs">Hours</p>
                       </div>
                       <div className="text-center">
                         <p className="font-bold" style={{ color: 'var(--text-primary)' }}>
                           {formatPercentage(worker.avgQuality)}
                         </p>
-                        <p style={{ color: 'var(--text-muted)' }}>Quality</p>
+                        <p style={{ color: 'var(--text-muted)' }} className="text-xs">Quality</p>
+                      </div>
+                      <div className="text-center">
+                        <p className="font-bold text-green-600">
+                          {formatCurrency(worker.weeklyEarnings)}
+                        </p>
+                        <p style={{ color: 'var(--text-muted)' }} className="text-xs">Paid Earnings</p>
                       </div>
                     </div>
+
+                    {/* Overall Score */}
                     <div className="text-right">
-                      <p className={`text-xl font-bold ${getScoreColor(worker.overallScore)}`}>
+                      <p className={`text-xl font-bold ${getScoreColor(worker.overallScore || 0)}`}>
                         {worker.overallScore?.toFixed(1) || '0.0'}
                       </p>
                       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>Score</p>
@@ -479,7 +534,7 @@ export default function SuperadminDashboard() {
         </Card>
       </div>
 
-      {/* System Info */}
+      {/* System Info (superadmin extra kept) */}
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">

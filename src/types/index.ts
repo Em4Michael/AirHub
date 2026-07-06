@@ -128,6 +128,16 @@ export interface User {
   extraBonus?: number;
   extraBonusReason?: string;
   weekStartDay?: number;
+  /**
+   * true = admin has added this user to the analyst worker pool.
+   * Set by the analyst badge grant/revoke endpoints.
+   */
+  analystApproved?: boolean;
+  /**
+   * true = user has been granted the analyst badge and can claim profiles.
+   * analystApproved must also be true for full access.
+   */
+  analystBadge?: boolean;
   createdAt: string;
   updatedAt: string;
   isApproved?: boolean;
@@ -322,4 +332,227 @@ export interface PaginatedResponse<T> {
     total: number;
     count: number;
   };
+}
+
+export interface AnalystBenchmark {
+  _id:        string;
+  payPerHour: number;
+  startDate:  string;
+  endDate:    string;
+  isActive:   boolean;
+  notes?:     string;
+  createdBy?: { _id: string; name: string };
+  createdAt:  string;
+  updatedAt:  string;
+}
+
+export interface AnalystProfile {
+  _id:               string;
+  name:              string;
+  description?:      string;
+  accountBearerName: string;
+  email?:            string;
+  state?:            string;
+  country?:          string;
+
+  // Optional account-access details
+  accountName?:      string;
+  loginDetails?:     string;
+  loginMethod?:      string;
+
+  workerPool:        Array<{ _id: string; name: string; email?: string; profilePhoto?: string; analystBadge?: boolean }>;
+  currentHolder?:    { _id: string; name: string; profilePhoto?: string } | null;
+  claimedAt?:        string | null;
+
+  adminCutPercentage?: number | null;
+  isTerminated:      boolean;
+  isActive:          boolean;
+
+  // Enriched by backend for current user
+  isMine?:           boolean;
+  inPool?:           boolean;
+  isAvailable?:      boolean;
+  createdAt:         string;
+  updatedAt:         string;
+
+    // Enrichment from getPublicAnalystProfiles (optional)
+  today?:           number;
+  thisWeek?:        number;
+  thisMonth?:       number;
+  allTime?:         number;
+  workerBreakdown?: AnalystWorkerHours[];
+  maxHoursPerDay?:  number;
+  caps?:            { daily: number; weekly: number; monthly: number };
+
+}
+
+export interface AnalystSession {
+  _id:             string;
+  worker:          string | { _id: string; name: string; profilePhoto?: string };
+  profile:         string | { _id: string; name: string; accountBearerName: string };
+  claimedAt:       string;
+  returnedAt?:     string | null;
+  startTimeInput?: string;
+  endTimeInput?:   string;
+  hoursLogged:     number;
+  adminHours?:     number | null;
+  effectiveHours:  number;
+  notes?:          string;
+  adminNotes?:     string;
+  status:          'active' | 'pending' | 'approved' | 'rejected';
+  month:           number;
+  year:            number;
+  hourlyRate?:     number;
+  approvedBy?:     string | { _id: string; name: string };
+  approvedAt?:     string;
+  rejectedBy?:     string | { _id: string; name: string };
+  rejectedAt?:     string;
+  rejectionReason?: string;
+  createdAt:       string;
+  updatedAt:       string;
+}
+
+export interface AnalystPayment {
+  _id:           string;
+  user:          string | { _id: string; name: string; email: string; profilePhoto?: string };
+  month:         number;
+  year:          number;
+  monthStart:    string;
+  monthEnd:      string;
+  totalHours:    number;
+  sessionCount:  number;
+  hourlyRate:    number;
+  totalEarnings: number;
+  status:        'pending' | 'approved' | 'paid' | 'denied';
+  paid:          boolean;
+  paidDate?:     string;
+  paidBy?:       string | { _id: string; name: string };
+  approvedBy?:   string | { _id: string; name: string };
+  approvedAt?:   string;
+  deniedBy?:     string | { _id: string; name: string };
+  deniedAt?:     string;
+  denialReason?: string;
+  adminNotes?:   string;
+  createdAt:     string;
+  updatedAt:     string;
+}
+
+export interface AnalystDashboard {
+  currentMonth:    { month: number; year: number };
+  totalHours:      number;
+  pendingHours:    number;
+  earnings:        number;
+  pendingEarnings: number;
+  hourlyRate:      number;
+  sessionCount:    number;
+  approvedCount:   number;
+  pendingCount:    number;
+  weeklyBreakdown: Array<{ week: string; hours: number; earnings: number }>;
+  lifetimeHours:   number;
+  lifetimeEarnings: number;
+  payment?:        AnalystPayment | null;
+heldProfile?:    { _id: string; name: string; accountBearerName: string; claimedAt: string } | null;
+ activeSession?:  AnalystSession | null;
+}
+
+export interface AnalystEarner {
+  rank:          number;
+  userId:        string;
+  name:          string;
+  hours:         number;
+  earnings:      number;
+  sessions:      number;
+  isCurrentUser: boolean;
+}
+
+/**
+ * Row shape returned by GET /analyst/admin/users — used by the admin
+ * "Analyst Badges" management page.
+ */
+export interface AnalystUserRow {
+  _id: string;
+  name: string;
+  email: string;
+  profilePhoto?: string | null;
+  analystApproved?: boolean;
+  analystBadge?: boolean;
+  isApproved?: boolean;
+  createdAt: string;
+}
+
+export interface AnalystSettings {
+  _id?:           string;
+  maxHoursPerDay: number;
+  updatedBy?:     string | { _id: string; name: string };
+  updatedAt?:     string;
+}
+
+/** One worker's hours on a single account, split by period. */
+export interface AccountWorkerHours {
+  id:      string;
+  name:    string;
+  today:   number;
+  week:    number;
+  month:   number;
+  allTime: number;
+}
+
+export interface AccountStats {
+  profile:        AnalystProfile;
+  maxHoursPerDay: number;
+  today:          number;
+  thisWeek:       number;
+  thisMonth:      number;
+  allTime:        number;
+  caps:           { daily: number; weekly: number; monthly: number };
+  workerBreakdown: AccountWorkerHours[];
+  chartData:      Array<{ date: string; hours: number }>;
+  sessionCount:   number;
+}
+
+export interface AccountListRow {
+  _id:               string;
+  name:              string;
+  accountBearerName: string;
+  email?:            string;
+  state?:            string;
+  country?:          string;
+  isActive:          boolean;
+  isTerminated:      boolean;
+  currentHolder?:    { _id: string; name: string } | null;
+  createdAt:         string;
+}
+
+export interface ProductionEntity {
+  id:      string;
+  name:    string;
+  bearer?: string;
+  today:   number;
+  week:    number;
+  month:   number;
+  allTime: number;
+}
+
+export interface AnalystProduction {
+  totals:       { today: number; week: number; month: number; allTime: number };
+  earnings:     { today: number; week: number; month: number; allTime: number };
+  adminCut:     { rate: number; today: number; week: number; month: number; allTime: number };
+  caps:         { daily: number; weekly: number; monthly: number };
+  hourlyRate:   number;
+  accountCount: number;
+  activeClaims: number;
+  sessionCount: number;
+  topAccounts:  ProductionEntity[];
+  topWorkers:   ProductionEntity[];
+  trend:        Array<{ date: string; hours: number }>;
+  maxHoursPerDay: number;
+}
+
+export interface AnalystWorkerHours {
+  id:      string;
+  name:    string;
+  today:   number;
+  week:    number;
+  month:   number;
+  allTime: number;
 }
