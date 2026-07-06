@@ -9,7 +9,7 @@ import { Spinner } from '@/components/ui/Spinner';
 import { Alert } from '@/components/ui/Alert';
 import { adminApi } from '@/lib/api/admin.api';
 import { superadminApi } from '@/lib/api/superadmin.api';
-import { User } from '@/types';
+import { User, UserRole, UserStatus } from '@/types';
 import { formatDate } from '@/lib/utils/format';
 import {
   Search, ChevronLeft, ChevronRight, ExternalLink,
@@ -20,11 +20,11 @@ import { Input } from '@/components/ui/Input';
 
 const PAGE_SIZE = 25;
 
-// Deterministic colour so each user always gets the same avatar colour
 const AVATAR_COLORS = [
   '#4f46e5', '#7c3aed', '#db2777', '#dc2626',
   '#d97706', '#059669', '#0891b2', '#2563eb',
 ];
+
 const avatarColor = (name: string) =>
   AVATAR_COLORS[(name?.charCodeAt(0) || 0) % AVATAR_COLORS.length];
 
@@ -36,7 +36,6 @@ const getUserInitials = (name: string) => {
     : name[0].toUpperCase();
 };
 
-// Avatar uses initials only — no base64 / no image requests
 const Avatar = ({ name }: { name: string }) => (
   <div
     className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold flex-shrink-0 text-sm select-none"
@@ -47,20 +46,17 @@ const Avatar = ({ name }: { name: string }) => (
 );
 
 /**
- * The backend stores access state as two booleans (isActive, isApproved) and
- * does NOT send a `status` string. The UI, however, keys every action button
- * off `user.status`. Without this normalizer the Promote / Revoke / Restore
- * buttons never render because `user.status` is always undefined.
- *
- * Derive a canonical status from whatever the server sent:
- *   - revoked : access has been pulled (inactive OR unapproved after having been active)
- *   - pending : awaiting first approval
- *   - approved: active + approved
+ * Derive status using available fields (isApproved + status + isActive if present)
  */
 const deriveStatus = (u: User): 'approved' | 'pending' | 'revoked' => {
-  if (u.status) return u.status as any; // trust an explicit server status if present
-  if (u.isActive === false) return 'revoked';
-  if (u.isApproved) return 'approved';
+  if (u.status === UserStatus.REVOKED) return 'revoked';
+  if (u.status === UserStatus.APPROVED) return 'approved';
+  if (u.status === UserStatus.PENDING) return 'pending';
+
+  // Fallback using isApproved
+  if (u.isApproved === false) return 'revoked';
+  if (u.isApproved === true) return 'approved';
+
   return 'pending';
 };
 
@@ -90,8 +86,12 @@ export default function SuperadminUsersPage() {
         const flat = Array.isArray(response.data)
           ? (response.data.flat(Infinity) as User[])
           : [];
-        // Normalize status so action buttons render correctly
-        const normalized = flat.map((u) => ({ ...u, status: deriveStatus(u) }));
+
+        const normalized = flat.map((u) => ({
+          ...u,
+          status: deriveStatus(u) as UserStatus,
+        }));
+
         setUsers(normalized);
         if (response.pagination?.pages) setTotalPages(response.pagination.pages);
         if (response.pagination?.total) setTotalUsers(response.pagination.total);
@@ -99,7 +99,6 @@ export default function SuperadminUsersPage() {
       } else {
         setUsers([]);
       }
-      setLoading(false);
     } catch (err: any) {
       if (attempt < 3) {
         setTimeout(() => fetchUsers(attempt + 1), 5000);
@@ -108,48 +107,58 @@ export default function SuperadminUsersPage() {
           err.response?.data?.message ||
           'Failed to load users. The server may be offline — please refresh.'
         );
-        setLoading(false);
       }
+    } finally {
+      setLoading(false);
     }
   };
 
-  // Optimistically patch a single user in local state so the UI updates
-  // instantly, then re-fetch to stay authoritative.
   const patchUser = (userId: string, changes: Partial<User>) => {
     setUsers((prev) =>
       prev.map((u) =>
-        u._id === userId ? { ...u, ...changes, status: deriveStatus({ ...u, ...changes }) } : u
+        u._id === userId 
+          ? { ...u, ...changes, status: deriveStatus({ ...u, ...changes }) as UserStatus }
+          : u
       )
     );
   };
 
-  const handlePromote = async (userId: string) => {
-    setActionLoading(userId);
-    setError('');
-    setSuccess('');
-    try {
-      await superadminApi.promoteToAdmin(userId);
-      patchUser(userId, { role: 'admin', isApproved: true } as Partial<User>);
-      setSuccess('User promoted to admin');
-      fetchUsers();
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to promote user');
-    } finally { setActionLoading(null); }
-  };
+const handlePromote = async (userId: string) => {
+  setActionLoading(userId);
+  setError('');
+  setSuccess('');
+  try {
+    await superadminApi.promoteToAdmin(userId);
+    patchUser(userId, { 
+      role: UserRole.ADMIN,      // ← Use enum
+      isApproved: true 
+    });
+    setSuccess('User promoted to admin');
+    fetchUsers();
+  } catch (err: any) {
+    setError(err.response?.data?.message || 'Failed to promote user');
+  } finally { 
+    setActionLoading(null); 
+  }
+};
 
-  const handleDemote = async (userId: string) => {
-    setActionLoading(userId);
-    setError('');
-    setSuccess('');
-    try {
-      await superadminApi.demoteToUser(userId);
-      patchUser(userId, { role: 'user' } as Partial<User>);
-      setSuccess('Admin demoted to user');
-      fetchUsers();
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to demote user');
-    } finally { setActionLoading(null); }
-  };
+const handleDemote = async (userId: string) => {
+  setActionLoading(userId);
+  setError('');
+  setSuccess('');
+  try {
+    await superadminApi.demoteToUser(userId);
+    patchUser(userId, { 
+      role: UserRole.USER        // ← Use enum
+    });
+    setSuccess('Admin demoted to user');
+    fetchUsers();
+  } catch (err: any) {
+    setError(err.response?.data?.message || 'Failed to demote user');
+  } finally { 
+    setActionLoading(null); 
+  }
+};
 
   const handleRevoke = async (userId: string) => {
     setActionLoading(userId);
@@ -157,12 +166,14 @@ export default function SuperadminUsersPage() {
     setSuccess('');
     try {
       await superadminApi.revokeAccess(userId);
-      patchUser(userId, { isActive: false, isApproved: false } as Partial<User>);
+      patchUser(userId, { isApproved: false });
       setSuccess('Access revoked');
       fetchUsers();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to revoke access');
-    } finally { setActionLoading(null); }
+    } finally { 
+      setActionLoading(null); 
+    }
   };
 
   const handleRestore = async (userId: string) => {
@@ -171,18 +182,20 @@ export default function SuperadminUsersPage() {
     setSuccess('');
     try {
       await superadminApi.restoreAccess(userId);
-      patchUser(userId, { isActive: true, isApproved: true } as Partial<User>);
+      patchUser(userId, { isApproved: true });
       setSuccess('Access restored');
       fetchUsers();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to restore access');
-    } finally { setActionLoading(null); }
+    } finally { 
+      setActionLoading(null); 
+    }
   };
 
   const filteredUsers = users.filter(
     (u) =>
       (u.name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (u.email || '').toLowerCase().includes(searchQuery.toLowerCase()),
+      (u.email || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   const getStatusVariant = (status: string) => {
@@ -202,56 +215,52 @@ export default function SuperadminUsersPage() {
     }
   };
 
-const ActionButtons = ({ user }: { user: User }) => {
-  const busy = actionLoading === user._id;
-  const role = String(user.role || 'user').toLowerCase();
-  const status = deriveStatus(user);
+  const ActionButtons = ({ user }: { user: User }) => {
+    const busy = actionLoading === user._id;
+    const role = String(user.role || 'user').toLowerCase();
+    const status = deriveStatus(user);
 
-  if (role === 'superadmin') {
-    return <span className="text-xs" style={{ color: 'var(--text-muted)' }}>—</span>;
-  }
+    if (role === 'superadmin') {
+      return <span className="text-xs" style={{ color: 'var(--text-muted)' }}>—</span>;
+    }
 
-  return (
-    <div className="flex items-center gap-1 flex-wrap">
-      {/* Promote: any regular user that isn't revoked (pending is fine) */}
-      {role === 'user' && status !== 'revoked' && (
-        <Button size="sm" variant="outline" onClick={() => handlePromote(user._id)} isLoading={busy} title="Promote to Admin">
-          <ArrowUp className="w-3 h-3" />
-        </Button>
-      )}
+    return (
+      <div className="flex items-center gap-1 flex-wrap">
+        {role === 'user' && status !== 'revoked' && (
+          <Button size="sm" variant="outline" onClick={() => handlePromote(user._id)} isLoading={busy} title="Promote to Admin">
+            <ArrowUp className="w-3 h-3" />
+          </Button>
+        )}
 
-      {/* Demote: any admin */}
-      {role === 'admin' && (
-        <Button size="sm" variant="outline" onClick={() => handleDemote(user._id)} isLoading={busy} title="Demote to User">
-          <ArrowDown className="w-3 h-3" />
-        </Button>
-      )}
+        {role === 'admin' && (
+          <Button size="sm" variant="outline" onClick={() => handleDemote(user._id)} isLoading={busy} title="Demote to User">
+            <ArrowDown className="w-3 h-3" />
+          </Button>
+        )}
 
-      {/* Revoke: anyone not already revoked (covers pending AND approved) */}
-      {status !== 'revoked' && (
-        <Button size="sm" variant="danger" onClick={() => handleRevoke(user._id)} isLoading={busy} title="Revoke Access">
-          <ShieldOff className="w-3 h-3" />
-        </Button>
-      )}
+        {status !== 'revoked' && (
+          <Button size="sm" variant="danger" onClick={() => handleRevoke(user._id)} isLoading={busy} title="Revoke Access">
+            <ShieldOff className="w-3 h-3" />
+          </Button>
+        )}
 
-      {/* Restore: anyone revoked */}
-      {status === 'revoked' && (
-        <Button size="sm" variant="success" onClick={() => handleRestore(user._id)} isLoading={busy} title="Restore Access">
-          <Shield className="w-3 h-3" />
-        </Button>
-      )}
-    </div>
-  );
-};
+        {status === 'revoked' && (
+          <Button size="sm" variant="success" onClick={() => handleRestore(user._id)} isLoading={busy} title="Restore Access">
+            <Shield className="w-3 h-3" />
+          </Button>
+        )}
+      </div>
+    );
+  };
 
   const startRecord = (page - 1) * PAGE_SIZE + 1;
-  const endRecord   = Math.min(page * PAGE_SIZE, totalUsers);
+  const endRecord = Math.min(page * PAGE_SIZE, totalUsers);
 
   const Pagination = () => {
     if (totalPages <= 1) return null;
     const getPages = () => {
       const pages: (number | '...')[] = [];
-      const left  = Math.max(2, page - 2);
+      const left = Math.max(2, page - 2);
       const right = Math.min(totalPages - 1, page + 2);
       pages.push(1);
       if (left > 2) pages.push('...');
@@ -260,30 +269,47 @@ const ActionButtons = ({ user }: { user: User }) => {
       if (totalPages > 1) pages.push(totalPages);
       return pages;
     };
+
     return (
       <div className="flex flex-col sm:flex-row items-center justify-between gap-3 px-1">
         <p className="text-sm order-2 sm:order-1" style={{ color: 'var(--text-muted)' }}>
-          Showing <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{startRecord}–{endRecord}</span>{' '}
-          of <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{totalUsers}</span> users
+          Showing <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{startRecord}–{endRecord}</span> of{' '}
+          <span className="font-semibold" style={{ color: 'var(--text-primary)' }}>{totalUsers}</span> users
         </p>
         <div className="flex items-center gap-1 order-1 sm:order-2">
-          <button onClick={() => setPage(1)} disabled={page === 1} className="p-1.5 rounded-lg transition-colors disabled:opacity-30" style={{ backgroundColor: 'var(--bg-tertiary)' }}><ChevronsLeft className="w-4 h-4" /></button>
-          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-1.5 rounded-lg transition-colors disabled:opacity-30" style={{ backgroundColor: 'var(--bg-tertiary)' }}><ChevronLeft className="w-4 h-4" /></button>
+          <button onClick={() => setPage(1)} disabled={page === 1} className="p-1.5 rounded-lg transition-colors disabled:opacity-30" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+            <ChevronsLeft className="w-4 h-4" />
+          </button>
+          <button onClick={() => setPage((p) => Math.max(1, p - 1))} disabled={page === 1} className="p-1.5 rounded-lg transition-colors disabled:opacity-30" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+            <ChevronLeft className="w-4 h-4" />
+          </button>
+
           <div className="flex items-center gap-1">
             {getPages().map((pg, idx) =>
               pg === '...' ? (
                 <span key={`e-${idx}`} className="px-1 text-sm" style={{ color: 'var(--text-muted)' }}>…</span>
               ) : (
-                <button key={pg} onClick={() => setPage(pg as number)}
+                <button
+                  key={pg}
+                  onClick={() => setPage(pg as number)}
                   className="min-w-[32px] h-8 px-2 rounded-lg text-sm font-medium transition-colors"
-                  style={{ backgroundColor: pg === page ? 'var(--accent-color)' : 'var(--bg-tertiary)', color: pg === page ? '#fff' : 'var(--text-secondary)' }}>
+                  style={{
+                    backgroundColor: pg === page ? 'var(--accent-color)' : 'var(--bg-tertiary)',
+                    color: pg === page ? '#fff' : 'var(--text-secondary)',
+                  }}
+                >
                   {pg}
                 </button>
               )
             )}
           </div>
-          <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-1.5 rounded-lg transition-colors disabled:opacity-30" style={{ backgroundColor: 'var(--bg-tertiary)' }}><ChevronRight className="w-4 h-4" /></button>
-          <button onClick={() => setPage(totalPages)} disabled={page === totalPages} className="p-1.5 rounded-lg transition-colors disabled:opacity-30" style={{ backgroundColor: 'var(--bg-tertiary)' }}><ChevronsRight className="w-4 h-4" /></button>
+
+          <button onClick={() => setPage((p) => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="p-1.5 rounded-lg transition-colors disabled:opacity-30" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+            <ChevronRight className="w-4 h-4" />
+          </button>
+          <button onClick={() => setPage(totalPages)} disabled={page === totalPages} className="p-1.5 rounded-lg transition-colors disabled:opacity-30" style={{ backgroundColor: 'var(--bg-tertiary)' }}>
+            <ChevronsRight className="w-4 h-4" />
+          </button>
         </div>
       </div>
     );
@@ -303,11 +329,17 @@ const ActionButtons = ({ user }: { user: User }) => {
           </p>
         </div>
         <div className="w-full sm:w-64">
-          <Input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search this page..." leftIcon={<Search className="w-5 h-5" />} />
+          <Input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search this page..."
+            leftIcon={<Search className="w-5 h-5" />}
+          />
         </div>
       </div>
 
-      {error   && <Alert type="error"   message={error}   onClose={() => setError('')}   />}
+      {error && <Alert type="error" message={error} onClose={() => setError('')} />}
       {success && <Alert type="success" message={success} onClose={() => setSuccess('')} />}
 
       {loading && users.length > 0 && (
@@ -316,38 +348,40 @@ const ActionButtons = ({ user }: { user: User }) => {
         </div>
       )}
 
-      {/* Mobile */}
+      {/* Mobile View */}
       <div className="md:hidden space-y-3">
         {filteredUsers.length === 0 ? (
           <p className="text-center py-12 text-sm" style={{ color: 'var(--text-muted)' }}>No users found</p>
-        ) : filteredUsers.map((user) => (
-          <div key={user._id} className="rounded-xl border p-4 space-y-3" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
-            <div className="flex items-center gap-3">
-              <Avatar name={user.name} />
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{user.name}</p>
-                <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{user.email}</p>
+        ) : (
+          filteredUsers.map((user) => (
+            <div key={user._id} className="rounded-xl border p-4 space-y-3" style={{ backgroundColor: 'var(--bg-secondary)', borderColor: 'var(--border-color)' }}>
+              <div className="flex items-center gap-3">
+                <Avatar name={user.name} />
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{user.name}</p>
+                  <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{user.email}</p>
+                </div>
+                <Link href={`/dashboard/superadmin/users/${user._id}`}>
+                  <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium" style={{ color: 'var(--accent-color)', backgroundColor: 'var(--bg-tertiary)' }}>
+                    Details <ExternalLink className="w-3 h-3" />
+                  </button>
+                </Link>
               </div>
-              <Link href={`/dashboard/superadmin/users/${user._id}`} className="flex-shrink-0">
-                <button className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium" style={{ color: 'var(--accent-color)', backgroundColor: 'var(--bg-tertiary)' }}>
-                  Details <ExternalLink className="w-3 h-3" />
-                </button>
-              </Link>
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge variant={getRoleVariant(String(user.role))}>{String(user.role).toUpperCase()}</Badge>
+                <Badge variant={getStatusVariant(deriveStatus(user))}>{deriveStatus(user)}</Badge>
+                {user.bankDetails ? <Badge variant="success">Bank added</Badge> : <Badge variant="warning">No bank</Badge>}
+                <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>{formatDate(user.createdAt)}</span>
+              </div>
+              <div className="pt-3 border-t" style={{ borderColor: 'var(--border-color)' }}>
+                <ActionButtons user={user} />
+              </div>
             </div>
-            <div className="flex flex-wrap items-center gap-2">
-              <Badge variant={getRoleVariant(user.role) as any}>{user.role.toUpperCase()}</Badge>
-              <Badge variant={getStatusVariant(deriveStatus(user)) as any}>{deriveStatus(user)}</Badge>
-              {user.bankDetails ? <Badge variant="success">Bank added</Badge> : <Badge variant="warning">No bank</Badge>}
-              <span className="ml-auto text-xs" style={{ color: 'var(--text-muted)' }}>{formatDate(user.createdAt)}</span>
-            </div>
-            <div className="pt-3 border-t" style={{ borderColor: 'var(--border-color)' }}>
-              <ActionButtons user={user} />
-            </div>
-          </div>
-        ))}
+          ))
+        )}
       </div>
 
-      {/* Desktop */}
+      {/* Desktop Table */}
       <div className="hidden md:block">
         <Card>
           <CardContent className="p-0">
@@ -362,34 +396,34 @@ const ActionButtons = ({ user }: { user: User }) => {
               <tbody className="divide-y" style={{ borderColor: 'var(--border-color)' }}>
                 {filteredUsers.length === 0 ? (
                   <tr><td colSpan={8} className="px-6 py-12 text-center" style={{ color: 'var(--text-muted)' }}>No users found</td></tr>
-                ) : filteredUsers.map((user, idx) => (
-                  <tr key={user._id} className="transition-colors"
-                    onMouseEnter={(e) => (e.currentTarget.style.backgroundColor = 'var(--bg-tertiary)')}
-                    onMouseLeave={(e) => (e.currentTarget.style.backgroundColor = 'transparent')}>
-                    <td className="px-4 py-4 text-sm w-10" style={{ color: 'var(--text-muted)' }}>{startRecord + idx}</td>
-                    <td className="px-4 py-4">
-                      <div className="flex items-center gap-3">
-                        <Avatar name={user.name} />
-                        <div className="min-w-0">
-                          <p className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{user.name}</p>
-                          <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{user.email}</p>
+                ) : (
+                  filteredUsers.map((user, idx) => (
+                    <tr key={user._id} className="transition-colors hover:bg-[var(--bg-tertiary)]">
+                      <td className="px-4 py-4 text-sm w-10" style={{ color: 'var(--text-muted)' }}>{startRecord + idx}</td>
+                      <td className="px-4 py-4">
+                        <div className="flex items-center gap-3">
+                          <Avatar name={user.name} />
+                          <div className="min-w-0">
+                            <p className="font-semibold truncate" style={{ color: 'var(--text-primary)' }}>{user.name}</p>
+                            <p className="text-xs truncate" style={{ color: 'var(--text-muted)' }}>{user.email}</p>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td className="px-4 py-4"><Badge variant={getRoleVariant(user.role) as any}>{user.role.toUpperCase()}</Badge></td>
-                    <td className="px-4 py-4"><Badge variant={getStatusVariant(deriveStatus(user)) as any}>{deriveStatus(user)}</Badge></td>
-                    <td className="px-4 py-4 text-sm" style={{ color: 'var(--text-secondary)' }}>{formatDate(user.createdAt)}</td>
-                    <td className="px-4 py-4">{user.bankDetails ? <Badge variant="success">Added</Badge> : <Badge variant="warning">Missing</Badge>}</td>
-                    <td className="px-4 py-4"><ActionButtons user={user} /></td>
-                    <td className="px-4 py-4">
-                      <Link href={`/dashboard/superadmin/users/${user._id}`}>
-                        <button className="text-sm font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg transition-colors" style={{ color: 'var(--accent-color)', backgroundColor: 'var(--bg-tertiary)' }}>
-                          Details <ExternalLink className="w-3 h-3" />
-                        </button>
-                      </Link>
-                    </td>
-                  </tr>
-                ))}
+                      </td>
+                      <td className="px-4 py-4"><Badge variant={getRoleVariant(String(user.role))}>{String(user.role).toUpperCase()}</Badge></td>
+                      <td className="px-4 py-4"><Badge variant={getStatusVariant(deriveStatus(user))}>{deriveStatus(user)}</Badge></td>
+                      <td className="px-4 py-4 text-sm" style={{ color: 'var(--text-secondary)' }}>{formatDate(user.createdAt)}</td>
+                      <td className="px-4 py-4">{user.bankDetails ? <Badge variant="success">Added</Badge> : <Badge variant="warning">Missing</Badge>}</td>
+                      <td className="px-4 py-4"><ActionButtons user={user} /></td>
+                      <td className="px-4 py-4">
+                        <Link href={`/dashboard/superadmin/users/${user._id}`}>
+                          <button className="text-sm font-medium flex items-center gap-1 px-3 py-1.5 rounded-lg transition-colors" style={{ color: 'var(--accent-color)', backgroundColor: 'var(--bg-tertiary)' }}>
+                            Details <ExternalLink className="w-3 h-3" />
+                          </button>
+                        </Link>
+                      </td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </CardContent>
