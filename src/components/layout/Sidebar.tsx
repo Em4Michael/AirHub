@@ -110,7 +110,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     //{ label: 'Accounts',        href: '/dashboard/admin/accounts',       icon: <Briefcase       className="w-5 h-5" />, roles: [UserRole.ADMIN, UserRole.SUPERADMIN] },
     { label: 'Pending',         href: '/dashboard/admin/pending',        icon: <UserCheck       className="w-5 h-5" />, roles: [UserRole.ADMIN, UserRole.SUPERADMIN] },
     { label: 'Rankings',        href: '/dashboard/admin/rankings',       icon: <Award           className="w-5 h-5" />, roles: [UserRole.ADMIN, UserRole.SUPERADMIN] },
-    { label: 'Top Earners',     href: '/dashboard/admin/top-earners',    icon: <TrendingUp      className="w-5 h-5" />, roles: [UserRole.ADMIN, UserRole.SUPERADMIN] },
+    { label: 'Top Earners',     href: '/dashboard/admin/topEarners',    icon: <TrendingUp      className="w-5 h-5" />, roles: [UserRole.ADMIN, UserRole.SUPERADMIN] },
     { label: 'Reassign',        href: '/dashboard/admin/reassign',       icon: <UserCog         className="w-5 h-5" />, roles: [UserRole.ADMIN, UserRole.SUPERADMIN] },
 
     // Superadmin
