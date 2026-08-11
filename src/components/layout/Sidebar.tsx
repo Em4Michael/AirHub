@@ -27,6 +27,7 @@ import {
   UserCog,
   BarChart,
   Activity,
+  ClipboardList,   // ← NEW: for Transcription Analyst group
 } from "lucide-react";
 
 interface NavItem {
@@ -37,6 +38,7 @@ interface NavItem {
   badge?: string;
   children?: NavItem[];
   requireAnalyst?: boolean;
+  requireTranscription?: boolean;  // ← NEW
   adminOnly?: boolean;
 }
 
@@ -59,7 +61,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const isAdmin =
     user?.role === UserRole.ADMIN || user?.role === UserRole.SUPERADMIN;
-  const hasAnalyst = !!(user as any)?.analystBadge || isAdmin;
+
+  // Badge checks
+  const hasAnalyst       = !!(user as any)?.analystBadge       || isAdmin;
+  const hasTranscription = !!(user as any)?.transcriptionBadge || isAdmin;  // ← NEW
 
   // ── Auto-open group whose child is active ───────────────────────────────────
   useEffect(() => {
@@ -83,7 +88,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       href === "/dashboard/user" ||
       href === "/dashboard/admin" ||
       href === "/dashboard/superadmin" ||
-      href === "/dashboard/analyst"
+      href === "/dashboard/analyst" ||
+      href === "/dashboard/transcription"  
     )
       return pathname === href;
     return pathname.startsWith(href);
@@ -127,6 +133,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
       label: "Top Earners",
       href: "/dashboard/user/topEarners",
       icon: <Award className="w-4 h-4" />,
+            roles: [UserRole.USER],
+
     },
 
     // Admin
@@ -157,7 +165,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       icon: <FileText className="w-5 h-5" />,
       roles: [UserRole.ADMIN, UserRole.SUPERADMIN],
     },
-    //{ label: 'Accounts',        href: '/dashboard/admin/accounts',       icon: <Briefcase       className="w-5 h-5" />, roles: [UserRole.ADMIN, UserRole.SUPERADMIN] },
     {
       label: "Pending",
       href: "/dashboard/admin/pending",
@@ -250,11 +257,55 @@ export const Sidebar: React.FC<SidebarProps> = ({
         },
       ],
     },
+
+    // ── Transcription Analyst (users with transcriptionBadge + admins) ────────
+    {
+      label: "Transcription Analyst",
+      icon: <ClipboardList className="w-5 h-5" />,
+      requireTranscription: true,   // ← controls visibility
+      children: [
+        {
+          label: "Dashboard",
+          href: "/dashboard/transcription/dashboard",
+          icon: <LayoutDashboard className="w-4 h-4" />,
+        },
+        {
+          label: "Profiles",
+          href: "/dashboard/transcription/profiles",
+          icon: <Building2 className="w-4 h-4" />,
+        },
+        {
+          label: "Top Earners",
+          href: "/dashboard/transcription/top-earners",
+          icon: <Award className="w-4 h-4" />,
+        },
+        {
+          label: "Administration",
+          href: "/dashboard/transcription/admin",
+          icon: <Shield className="w-4 h-4" />,
+          adminOnly: true,
+        },
+        {
+          label: "Accounts",
+          href: "/dashboard/transcription/admin/account",
+          icon: <Briefcase className="w-4 h-4" />,
+          adminOnly: true,
+        },
+        {
+          label: "Production",
+          href: "/dashboard/transcription/admin/production",
+          icon: <BarChart2 className="w-4 h-4" />,
+          adminOnly: true,
+        },
+      ],
+    },
   ];
 
+  // ── Visibility filter ──────────────────────────────────────────────────────
   const visibleItems = NAV_ITEMS.filter((item) => {
-    if (item.requireAnalyst) return hasAnalyst;
-    if (item.roles && user) return item.roles.includes(user.role);
+    if (item.requireAnalyst)       return hasAnalyst;
+    if (item.requireTranscription) return hasTranscription;  // ← NEW
+    if (item.roles && user)        return item.roles.includes(user.role);
     return true;
   });
 
@@ -389,6 +440,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
         }
       }
 
+      // ── NEW: Divider + label before transcription group ───────────────────
+      if (item.requireTranscription && idx > 0) {
+        elements.push(
+          <div
+            key="div-transcription"
+            className="my-2 mx-1 h-px"
+            style={{ backgroundColor: "var(--border-color)" }}
+          />,
+        );
+        if (!collapsed) {
+          elements.push(
+            <p
+              key="lbl-transcription"
+              className="px-3 pb-1 text-[10px] font-black uppercase tracking-widest"
+              style={{ color: "var(--text-muted)" }}
+            >
+              Transcription Role
+            </p>,
+          );
+        }
+      }
+
       // Divider before superadmin
       if (
         item.roles?.includes(UserRole.SUPERADMIN) &&
@@ -457,17 +530,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         `}
         style={
           {
-            /* Mobile: always full width drawer, slide in/out */
             width: "min(16rem, 85vw)",
             transform: mobileOpen ? "translateX(0)" : "translateX(-100%)",
             backgroundColor: "var(--bg-secondary)",
             borderRight: "1px solid var(--border-color)",
-
-            /* Desktop overrides via inline style + Tailwind lg: classes above */
           } as React.CSSProperties
         }
       >
-        {/* Apply desktop collapsed width via a wrapper trick */}
         <style>{`
           @media (min-width: 1024px) {
             aside[data-sidebar] {
@@ -528,6 +597,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     style={{ backgroundColor: "var(--accent-color)" }}
                   >
                     ANALYST
+                  </span>
+                )}
+                {/* ── NEW: transcription badge pill ── */}
+                {(user as any).transcriptionBadge && (
+                  <span
+                    className="text-[9px] font-black px-1.5 py-0.5 rounded-full text-white"
+                    style={{ backgroundColor: "#059669" }}
+                  >
+                    TRANSCRIPTION
                   </span>
                 )}
               </div>

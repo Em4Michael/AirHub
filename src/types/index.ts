@@ -142,6 +142,8 @@ export interface User {
   updatedAt: string;
   isApproved?: boolean;
   weeklyPayments?: WeeklyPayment[];
+  transcriptionBadge?:    boolean;
+  transcriptionApproved?: boolean;
 }
 
 /**
