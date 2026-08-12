@@ -14,6 +14,7 @@ import {
   Plus, ArrowRight, Activity, AlertTriangle, Star, Trophy,
   DollarSign, TrendingUp, Wallet
 } from 'lucide-react';
+import ProjectsOverview from '@/components/layout/ProjectsOverview';
 
 interface WorkerRanking {
   _id: string;
@@ -283,6 +284,7 @@ export default function AdminDashboard() {
         </Card>
       </div>
 
+      <ProjectsOverview title="Super Overview" />
       <AdminEarningsSection />
 
 

@@ -7,6 +7,7 @@ import { transcriptionApi, TranscriptionEarner } from '@/lib/api/transcription.a
 import { useAuth } from '@/context/AuthContext';
 import { formatCurrency } from '@/lib/utils/format';
 import { Spinner } from '@/components/ui/Spinner';
+import Link from 'next/link';
 import { Award, ChevronLeft, ChevronRight, ClipboardList } from 'lucide-react';
 
 const MEDAL: Record<number, { bg: string; emoji: string }> = {
@@ -149,7 +150,10 @@ export default function TranscriptionTopEarnersPage() {
                     <div className="w-full rounded-2xl p-3 text-center border-2"
                       style={{ borderColor: medal ? '#f59e0b55' : 'var(--border-color)', backgroundColor: 'var(--bg-secondary)' }}>
                       <p className="text-lg">{medal?.emoji}</p>
-                      <p className="font-bold text-sm truncate" style={{ color: 'var(--text-primary)' }}>{e.name.split(' ')[0]}</p>
+                      <Link href={`/dashboard/superadmin/users/${e.userId}`}
+                        className="font-bold text-sm truncate hover:underline" style={{ color: 'var(--text-primary)' }}>
+                        {e.name.split(' ')[0]}
+                      </Link>
                       <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{e.tasks} tasks</p>
                       <p className="text-sm font-black mt-1" style={{ color: 'var(--accent-color)' }}>{formatCurrency(e.earnings)}</p>
                     </div>
@@ -170,10 +174,11 @@ export default function TranscriptionTopEarnersPage() {
                     {initials(e.name)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-sm truncate" style={{ color: 'var(--text-primary)' }}>
+                    <Link href={`/dashboard/superadmin/users/${e.userId}`}
+                      className="font-semibold text-sm truncate hover:underline block" style={{ color: 'var(--text-primary)' }}>
                       {e.name}
                       {e.isCurrentUser && <span className="ml-2 text-[9px] font-black px-1.5 py-0.5 rounded-full text-white" style={{ backgroundColor: 'var(--accent-color)' }}>YOU</span>}
-                    </p>
+                    </Link>
                     <p className="text-xs" style={{ color: 'var(--text-muted)' }}>{e.tasks} tasks · {e.sessions} sessions</p>
                   </div>
                   <p className="font-black text-sm tabular-nums" style={{ color: 'var(--text-primary)' }}>{formatCurrency(e.earnings)}</p>

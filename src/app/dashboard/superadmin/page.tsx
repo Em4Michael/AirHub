@@ -15,6 +15,8 @@ import {
   Award, UserCheck, ArrowRight, Activity,
   Star, Settings, Wallet, Shield, DollarSign, BarChart3,
 } from 'lucide-react';
+import ProjectsOverview from '@/components/layout/ProjectsOverview';
+
 
 interface WorkerRanking {
   _id: string;
@@ -284,7 +286,9 @@ export default function SuperadminDashboard() {
       </div>
 
       {/* Detailed earnings breakdown — same component the admin dashboard uses */}
+      <ProjectsOverview title="Super Overview" />
       <AdminEarningsSection />
+
 
       {/* Operations Stats (superadmin extra kept) */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
